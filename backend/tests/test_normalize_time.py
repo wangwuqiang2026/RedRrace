@@ -176,11 +176,25 @@ def test_missing_alias_file_warns_only_once(tmp_path, caplog):
 
 
 def test_shipped_aliases_file_is_loadable():
-    """仓库里的 backend/data/aliases.yml 是交付物，结构与占位键必须齐备。"""
+    """仓库里的 backend/data/aliases.yml 是交付物，结构必须齐备且不得含未核验映射。
+
+    2026-11-13 修正断言口径（原断言「person 段不能为空」已被推翻）：
+    原 person 段用「本校（待核）」→「旧校名（待核）」「省立第一师范（待核）」占位，
+    而「省立第一师范」是真实旧校名——一旦它作为别名参与归一，语料里所有该名称的记载
+    都会被并成同一主体，而它与本校的关系尚未核验，属于**假归一**，会污染阶段四的冲突检测。
+    按白名单的 verified 门控口径（核验通过前不参与归一），占位映射已整段摘除。
+    因此本用例改为：person 段允许为空；若非空，其中不得出现「待核」这类未核验标记，
+    也不得出现「本校」（校名未核验，具体校名映射一律不得入库）。
+    """
     data = load_aliases()
     assert set(data) >= {"person", "place"}
     assert isinstance(data["person"], dict) and isinstance(data["place"], dict)
-    assert data["person"], "至少要有旧校名→现校名一类占位条目，不能交空表"
+    assert data["place"], "地名别名表不应交空表（长沙/郴州两处已有可引用的异写）"
+    for canonical, aliases in data["person"].items():
+        names = [str(canonical)] + [str(a) for a in (aliases or [])]
+        joined = " ".join(names)
+        assert "待核" not in joined, f"未核验的人名映射不得入库参与归一：{joined!r}"
+        assert "本校" not in joined, f"校名未核验，不得写具体校名映射：{joined!r}"
 
 
 def test_alias_lookup_is_whitespace_and_width_normalized(tmp_path):
