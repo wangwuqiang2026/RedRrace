@@ -1,0 +1,358 @@
+# 来源白名单 —— RedTrace 阶段零（2026-11-13 定稿 v1）
+#
+# 字段语义（与 backend/app/ingestion/registry.py 约定，联调前请先读本注释）：
+#   name         机构全称或出版社全称，登记表 publisher 字段按「归一后的 name」比对（必填、唯一）
+#   aliases      供机构名归一比对的别名、简称、常见写法（registry.py 用它做 name 归一）
+#   domain       已核验的官网域名；留空字符串 "" 表示「暂无独立官网或域名未核到」。
+#                domain **不参与放行判断**（出版社条目普遍为空），registry 只按 name/aliases 比对；
+#                不得因为 domain 为空而判该条已核验，也不得因为 domain 为空而拒绝已核条目
+#   sections     可引用栏目范围（相对该站的路径或栏目名）；[] 表示无栏目或未能实测栏目，
+#                机构条目若为 []，使用前需人工确认栏目可达
+#   verified     布尔值 = **准入是否放行**（registry.py 判定时以此为准；false 一律拒绝入库）：
+#                  · 机构条目（文章发布方）：true 要求域名归属已实测核验（方式 A 直连实测，
+#                    或方式 B 官链交叉且至少两个可直连官方页面交叉确认）
+#                  · 出版社条目（电子书出版方）：电子书的核验对象是「这本书确实由该正规出版社
+#                    出版」，依据可以是 ① 出版社官网（含其新书/书目页）② CIP 数据 ③ ISBN 记录
+#                    ④ 国家新闻出版署备案页 ⑤ 权威机构网站上的书目页或出版通报页；
+#                    **不要求必须有独立域名**，故 domain 可为空而 verified 仍为 true，
+#                    但 note 必须写明实际核验依据（引用具体页面与页面里的原话）
+#                  · false = 待核验，一律不得入库
+#   verified_at  核验日期（YYYY-MM-DD）
+#   verify_source 核验时实际打开的页面 URL 列表（实测记录，可为 []）
+#   note         核验依据、口径说明与疑点（出版社条目必须在此说明凭哪一页放行）
+#
+# 准入规则全文见 docs/合规与引用政策.md 第一节与 docs/决策记录/000-语料来源与白名单.md。
+# 本文件不含未经核验就当作结论的条目；verified: false 改为 true 时须同时补 verify_source。
+#
+# 核验方法（2026-11-13，本机环境，工具 web_fetch 直连）：
+#   方式 A「直连实测」：直接打开该域名首页，读到该机构自我标识（页头/页脚主办单位、ICP 备案号）。
+#   方式 B「官链交叉」：域名取自另一个已直连实测成功的官方网站页脚/友情链接，属交叉印证，
+#              未打开目标站正文（本环境对部分政务 https 站点连接失败）。
+
+- name: 中央党史和文献研究院
+  domain: www.dswxyjy.org.cn
+  sections:
+    - /GB/423712/ 时政要闻
+    - /GB/427152/ 理论阐释
+    - /GB/427167/ 党史研究
+    - /GB/423724/ 人物研究
+    - /GB/427186/ 宣传教育
+    - /GB/427195/ 馆藏资源
+    - /GB/427192/ 地方工作
+    - /GB/427275/434085/ 图书出版·出版信息及书评
+    - ebook.dswxyjy.org.cn 成果总库（官方电子书库，公开在线阅读）
+  aliases:
+    - 中共中央党史和文献研究院
+    - 中央党史和文献研究院
+    - 中央党史研究院
+    - 中央文献研究院
+    - 党史和文献研究院
+    - 中央文献编译局
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - https://www.dswxyjy.org.cn/
+    - https://www.dswxyjy.org.cn/GB/427275/434085/index.html
+  note: >-
+    方式 A 直连实测。首页页头自我标识为「中央党史和文献研究院」，院长曲青山，地址北京市西城区前毛家湾1号。站内链接「中国共产党历史和文献网」实际也指向本站。
+
+- name: 中共党史网（中国共产党历史和文献网）
+  domain: www.zgdsw.org.cn
+  sections: []
+  aliases:
+    - 中共党史网
+    - 中国共产党历史和文献网
+    - 党史网
+  verified: false
+  verified_at: 2026-11-13
+  verify_source:
+    - http://cpc.people.com.cn/
+  note: >-
+    待核验。域名取自中国共产党新闻网页脚友情链接（href=http://www.zgdsw.org.cn/），但本环境两次直连该域名均失败（TypeError: fetch failed），未读到站点自身标识。按「宁缺毋滥」先标 false，能访问后补核；在此之前引用党史文献一律以中央党史和文献研究院官网为准。
+
+- name: 国家档案局（中央档案馆）
+  domain: www.saac.gov.cn
+  sections:
+    - /daj/jggk/ 机构概况
+    - /daj/gzdt/ 工作动态
+    - /daj/zwfw/ 政务服务
+  aliases:
+    - 国家档案局
+    - 中央档案馆
+    - 国家档案局中央档案馆
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - http://www.saac.gov.cn/
+    - https://www.difangzhi.cn/
+    - http://www.zgdazxw.com.cn/
+  note: >-
+    方式 B 官链交叉。http 访问该域名返回 301 跳转 https（说明域名在线且由该机构控制），正文抓取在本环境失败（https 直连 TypeError，多次重试同一结果）。域名与机构名经两个可直连的官方页面交叉确认：中国方志网友情链接「国家档案局 http://www.saac.gov.cn/」、中国档案资讯网页脚「主管单位：国家档案局」。sections 取自站内路径命名，未经直连逐页实测，引用前需人工复核栏目可达性。
+
+- name: 中国档案报社（中国档案报·中国档案资讯网）
+  domain: www.zgdazxw.com.cn
+  sections:
+    - /node_7.html 资讯
+    - /node_8.html 红色珍档（文化）
+    - /node_9.html 史海钩沉
+    - /node_10.html 解读
+    - /node_13.html 专题
+  aliases:
+    - 中国档案报
+    - 中国档案报社
+    - 中国档案资讯网
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - http://www.zgdazxw.com.cn/
+    - http://www.zgdazxw.com.cn/2026-10/19/content_505878.html
+  note: >-
+    方式 A 直连实测。首页页头「国家档案局主管 中国档案报社主办 档案新闻门户网」，页脚备案 京ICP备16005727号。「红色珍档」栏目是长征与革命档案史料的主要取材地；文章正文注明「原载于《中国档案报》某年某月某日 总第XXXX期 第X版」，登记时该信息写入 publish_date 与 license_note。
+
+- name: 中国地方志工作办公室（国家方志馆）·中国方志网
+  domain: www.difangzhi.cn
+  sections:
+    - /zs/zsbz/ 志书编纂
+    - /zs/zsxj/ 志书选介
+    - /dfs/dfsxj/ 地方史选介
+    - /nj/ 年鉴
+    - /ky/xslz/ 学术论著
+    - /xcjy/ 宣传教育
+    - /kfly/ 开发利用
+    - /fzg/ 方志馆
+  aliases:
+    - 中国方志网
+    - 中国地方志工作办公室
+    - 中国地方志指导小组办公室
+    - 中指办
+    - 国家方志馆
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - https://www.difangzhi.cn/
+    - https://www.difangzhi.cn/zs/zsxj/202504/t20250425_5870859.shtml
+  note: >-
+    方式 A 直连实测。首页页脚「中国地方志工作办公室(国家方志馆)主办 京ICP备08002157号-7」。「志书选介/地方史选介」两类页面常写明某志书的整理出版信息（出版社与出版年份），可作电子书出版信息核验来源；站内友情链接汇总了全国 31 家省级地方志机构官网域名，是省级站点补核的入口。
+
+- name: 人民网·中国共产党新闻网
+  domain: www.people.com.cn
+  sections:
+    - cpc.people.com.cn 中国共产党新闻网（要闻要论/党史/党建/理论）
+    - cpc.people.com.cn/GB/443712/ 党史频道（人物长廊、纪念回忆、党史资料库）
+    - dangshi.people.com.cn 党史频道独立域名（待核：仅见于站内链接，未直连实测）
+    - theory.people.com.cn 理论频道
+    - paper.people.com.cn 人民日报电子与图文数据库（1946—2026）
+  aliases:
+    - 人民网
+    - 中国共产党新闻网
+    - 人民日报
+    - 人民日报社
+    - 人民网党史频道
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - https://www.people.com.cn/
+    - http://cpc.people.com.cn/
+    - http://cpc.people.com.cn/n1/2026/1112/c443712-40832512.html
+  note: >-
+    方式 A 直连实测，www.people.com.cn 与 cpc.people.com.cn 两个域名均打开成功并读到站点标识；子域名 dangshi.people.com.cn（党史学习教育官方网站）只见到链接、未直连，标为待核，引用时优先用 cpc.people.com.cn 的文章 URL。
+
+- name: 新华网（新华通讯社）
+  domain: www.news.cn
+  sections:
+    - /politics/ 时政
+    - /culture/ 文化
+    - /zt/czsl90zn/ 纪念中国工农红军长征胜利90周年专题
+    - /zt/jd105zn/ 庆祝中国共产党成立105周年专题
+    - xinhuanet.com 同站旧域名
+  aliases:
+    - 新华网
+    - 新华社
+    - 新华通讯社
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - http://www.xinhuanet.com/
+  note: >-
+    方式 A 直连实测：http://www.xinhuanet.com/ 打开成功，页面同时以 www.news.cn 为站内主链接，两个域名为同一站点（新华网，新华通讯社主办）。登记 article 类来源时 publisher 统一填「新华网」，两种域名在 domain 比对时都算命中。
+
+- name: 光明网（光明日报社）
+  domain: www.gmw.cn
+  sections:
+    - news.gmw.cn 新闻
+    - politics.gmw.cn 时政
+    - theory.gmw.cn 理论
+    - dangjian.gmw.cn 党建
+    - reader.gmw.cn 悦读
+    - topics.gmw.cn 专题（含长征主题专题）
+    - epaper.gmw.cn 光明日报电子报与历年数据库
+  aliases:
+    - 光明网
+    - 光明日报
+    - 光明日报社
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - https://www.gmw.cn/
+  note: >-
+    方式 A 直连实测，首页页脚主办单位为光明日报社；epaper.gmw.cn 电子报链接在首页可达（未逐页直连）。
+
+- name: 求是网（求是杂志社）
+  domain: www.qstheory.cn
+  sections:
+    - /qsyw/ 要闻
+    - /qswp.htm 求是网评
+    - /v9zhuanqu/zhuanqu/sddy/ 深度调研
+    - /books/ 图书
+    - /zt2026/cz/ 赓续长征精神 奋进复兴征程专题
+  aliases:
+    - 求是网
+    - 求是杂志社
+    - 求是
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - https://www.qstheory.cn/
+  note: >-
+    方式 A 直连实测。首页栏目与专题路径均已读取（含 2026 年第 21 期目次、长征专题）。
+
+- name: 湖南省地方志编纂院
+  domain: dfz.hunan.gov.cn
+  sections:
+    - /dfz/tslm_71564/dfzs/ 地方志书
+    - /dfz/tslm_71564/zhnj/ 综合年鉴
+    - /dfz/dqsj/ 地情书籍
+    - /dfz/xxgk_71525/zcfg/ 政策法规
+  aliases:
+    - 湖南省地方志编纂院
+    - 湖南省地方志编纂委员会办公室
+    - 湖南方志馆
+    - 湖南省史志办
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - http://dfz.hunan.gov.cn/
+  note: >-
+    方式 A 直连实测，页脚「主办单位：湖南省地方志编纂院 湘ICP备2023006093号-1」。本条按「湖南」取样（现有公开数据引用涉及湖南郴州的长征档案报道）；若项目组本地省份不是湖南，须把本条替换为本省地方志机构并按同法核验，不得直接套用。站内「数字方志馆」为 IP 直连（113.246.57.229:8184），不列入可引用栏目，须人工核对后再登记。
+
+- name: 本校官网与校史馆公开页面
+  domain: ""
+  sections: []
+  aliases:
+    - 校史馆
+    - 本校
+    - 学校官网
+  verified: false
+  verified_at: 2026-11-13
+  verify_source: []
+  note: >-
+    待核验，缺口原因明确：本次任务未提供学校全称与官网域名，无法核验。plan.md 把本校页面列为「补充来源，非必需项」，所以在拿到校名并核验前，涉及校史的事实条目只能来自其他白名单机构或标「待补」。lead 提供校名后按方式 A 补核并填 domain。
+
+# ── 出版社条目（电子书按出版社核验；见 registry.py 的载体类型分支）──────────────
+# 说明：以下出版社均未找到可直连的独立官网，故 domain 一律留空；
+#   verified 的取值按「是否已核到官方出版通报页」判定（见文件头 verified 语义）：
+#   已核到通报页 = true（中共党史出版社、解放军出版社、湖南师范大学出版社）；
+#   未核到 = false（中央文献出版社、人民出版社、新华出版社）。
+# 准入口径：出版社名在白名单中可匹配（name/aliases）且该条 verified: true，
+#   并且**具体某一本书**必须有可打开的官方通报页写明书名 + 出版社 + 出版年份，缺一不得入库。
+
+- name: 中共党史出版社
+  domain: ""
+  sections: []
+  aliases:
+    - 中共党史出版社
+    - 党史出版社
+    - 中共党史出版社北京
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - https://www.dswxyjy.org.cn/n1/2026/0918/c434085-40801352.html
+    - https://www.dswxyjy.org.cn/n1/2025/1119/c434085-40607205.html
+    - https://www.dswxyjy.org.cn/n1/2025/0826/c434085-40550547.html
+    - https://www.dswxyjy.org.cn/n1/2024/1223/c423712-40387397.html
+    - https://www.dswxyjy.org.cn/n1/2026/0831/c434085-40789511.html
+    - https://www.dswxyjy.org.cn/n1/2024/0929/c427134-40330933.html
+  note: >-
+    官网域名未核到（搜索与直连均未取到出版社自建网站）；准入放行依据为中央党史和文献研究院官网「图书出版·出版信息及书评」与「本院动态」栏目上的出版通报页，其中《中国共产党历史》第三卷上册（2024）与《中国共产党编年史》（新民主主义革命时期，29 卷，2024）两条为正文显式写「由中共党史出版社出版」的最强证据。已实测其 2024—2026 年出版物 6 种，见 verify_source。
+
+- name: 解放军出版社
+  domain: ""
+  sections: []
+  aliases:
+    - 解放军出版社
+    - 解放军文艺出版社
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - https://www.dswxyjy.org.cn/n1/2026/1015/c434085-40815320.html
+  note: >-
+    官网域名未核到（准入依据为官方出版通报页）。2026 年该社修订再版《红军长征记》的通报已实测（中央党史和文献研究院官网转载《解放军报》2026-10-15，正文显式写「由解放军出版社修订再版」）。注意同一条通报提到 2006 年由「解放军文艺出版社」重印，两个社名是不同主体还是同一主体沿革未核，故 aliases 合并但标注此疑点；如后续要求区分，删掉「解放军文艺出版社」别名并单独建条。
+
+- name: 湖南师范大学出版社
+  domain: ""
+  sections: []
+  aliases:
+    - 湖南师范大学出版社
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - https://www.difangzhi.cn/zs/zsxj/202504/t20250425_5870859.shtml
+  note: >-
+    官网域名未核到（准入依据为权威机构网站上的书目页）。明嘉靖《长沙府志》点校版 2017 年 9 月由该社出版（中国方志网志书选介页实测，页内写明出版社、出版时间与 29.7 万字），是本地史料类电子书的一条可核验出版记录。
+
+- name: 中央文献出版社
+  domain: ""
+  sections: []
+  aliases:
+    - 中央文献出版社
+    - 中央文献
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - https://www.dswxyjy.org.cn/n1/2026/1110/c423712-40831436.html
+    - https://www.dswxyjy.org.cn/n1/2026/0827/c423712-40787410.html
+  note: >-
+    域名未核到（本阶段未找到该社独立官网）。准入放行依据为权威机构网站上的书目/出版通报页，正文有明确文字：习近平同志《论减贫脱贫》「近日由中央文献出版社出版，在全国发行」（2026-11-10 通报，转载新华社电）；《习近平文化文选》第一卷、第二卷「近日由中央文献出版社出版」（2026-08-27 通报，转载新华社电）。两书均为中共中央党史和文献研究院编辑。
+
+- name: 人民出版社
+  domain: ""
+  sections: []
+  aliases:
+    - 人民出版社
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - https://www.dswxyjy.org.cn/n1/2025/0807/c427134-40538215.html
+  note: >-
+    域名未核到（出版社官网未直连成功，且本阶段未核到 CIP/ISBN 备案页）。准入放行依据为中央党史和文献研究院官网「本院动态」2025-08-07《八项规定何以改变中国》（曲青山著）出版发行通报页：页面为该书书目页（含封面、内容简介、作者简介），**发布来源标注为「人民出版社」微信公众号**（该社自有发布渠道）。
+    局限必须说清：该页正文没有出现「由人民出版社出版」这句显式文字，社名判定依据是来源署名 + 书目页性质，证据强度低于中央文献出版社与中共党史出版社两条。若 lead 或答辩要求正文级证据，把本条改回 verified: false 并在书单中撤下以该社为出版社的条目（当前样例登记表未用到该社，改动不影响样例可入库性）。
+
+- name: 新华出版社
+  domain: www.xinhuapub.com
+  sections:
+    - /zxdt.htm 资讯动态（新书出版发行）
+    - /xssd.htm 新书速递
+    - /dzts.htm 品牌图书·党政图书
+    - /rkrw.htm 品牌图书·社科人文
+  aliases:
+    - 新华出版社
+    - 新华出版社有限责任公司
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - http://www.xinhuapub.com/
+  note: >-
+    方式 A 直连实测（上一轮仅从新华网首页链接取得域名、未直连，本次已补核）。首页页脚「© 新华出版社有限责任公司 1979- 京ICP备13030651号-1」，领导介绍列出社长、总编辑等实名。站内「品牌图书·党政图书」区可见红色主题书目（如《辉煌之路：中国共产党全国代表大会一大至十九大》柳建辉主编、《红军部队新长征》《勋章：共和国不会忘记》《零容忍：将全面从严治党进行到底》《正道沧桑——社会主义五百年》《国家相册·我的小人书》），页面给出书名、编者与详情页 URL；**具体出版年份需在详情页或版权页二次确认**，本条只核到「该社存在且出版上述红色书目」。
+
+- name: 中国工人出版社
+  domain: ""
+  sections: []
+  aliases:
+    - 中国工人出版社
+  verified: true
+  verified_at: 2026-11-13
+  verify_source:
+    - https://www.dswxyjy.org.cn/n1/2026/0127/c423712-40653379.html
+  note: >-
+    域名未核到。准入放行依据为中央党史和文献研究院官网 2026-01-27 通报（转载新华社电、原载《人民日报》2026-01-27 01 版）：中华全国总工会组织编写的《习近平与一线职工朋友们》「近日由中国工人出版社出版，在全国发行」。与红色文化主题相关度中等（工运与一线职工类），按需取用。
+

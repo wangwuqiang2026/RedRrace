@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# 环境与密钥
+.env
+backend/.env
+
+# 语料与派生数据（体积大、含第三方原文，不入版本库）
+backend/data/raw/
+backend/data/parsed/
+backend/data/index/
+backend/data/exports/
+backend/data/*.db
+backend/data/校对记录.csv
+
+# 前端
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# 编辑器与工具产物
+.superpowers/
+.idea/
+.vscode/
+*.log
+Thumbs.db

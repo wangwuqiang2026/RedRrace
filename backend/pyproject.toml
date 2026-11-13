@@ -1,0 +1,33 @@
+[project]
+name = "redtrace-backend"
+version = "0.1.0"
+description = "RedTrace 红色文化知识库与可溯源问答系统 —— 后端"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy",
+    "pydantic-settings",
+    "pyyaml",
+    "pypdf",
+    "python-docx",
+    "beautifulsoup4",
+    "rank_bm25",
+    "jieba",
+    "httpx",
+    "python-multipart",
+    "openpyxl",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "pytest-cov"]
+ebook = ["ebooklib"]
+retrieval = ["sentence-transformers", "faiss-cpu"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
