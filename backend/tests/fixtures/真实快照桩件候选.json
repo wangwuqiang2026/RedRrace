@@ -1,0 +1,419 @@
+{
+  "meta": {
+    "task": "C3 真实语料桩件候选（engine-spike 摘引，backend-core 校验）",
+    "date": "2026-11-13",
+    "how_quotes_were_taken": "quote 由 app.ingestion.parse.parse_document 解析后的 Block.text 程序化切片（非手抄 HTML），逐条断言 quote ⊆ block_text 且 quote ⊆ full_text、value ⊆ quote；断言全部通过才写入本文件。",
+    "selection": {
+      "P9于都对": [
+        "S014(档案报)",
+        "S043(求是网转新华网)"
+      ],
+      "人物类": [
+        "S072(张太雷传)"
+      ],
+      "方志类": [
+        "S149(乾隆长沙府志介绍)",
+        "S145(嘉靖长沙府志数字化原文)"
+      ],
+      "转载稿": [
+        "S043",
+        "（求是网发布、署名来源新华网——用于验证「转载可引、同族不当第二家」）"
+      ],
+      "事件时间强位": [
+        "S154(10月19日到达吴起镇)"
+      ]
+    },
+    "known_imperfections": [
+      "S043 的两条：#9 是正文，#11 是正文中带情景剧语境的叙述句（'重现了1934年…'），1934年 是该句对历史背景的转述而非该文自证的事件日期，抽取端应把它当低置信线索；此外 S043 图片图注（#10/#18/#37 含'新华社记者…摄'）全部**未摘**，属于有意的瑕疵规避并在此声明。",
+      "S145 为影印古籍整理原文：全角/半角标点混用（如 '(明)孙存潘镒修' 是半角括号），quote 原样保留，OCR/整理件错字风险由阶段一人工校对 10% 覆盖，不在本批消除。",
+      "S014 #21 的 '16日' 与 S020 #6 的 '10月2日/9日/10日' 均缺年份于句内，value 按句内字面给，测试断言不要期待句内出现完整年月日。",
+      "生卒年/籍贯两条（S072、S149 吕肃高）为**单源事实**：本批找不到第二来源（与第十一节零类结论一致），摘出来是为了测抽取管线，不能用于冲突检出测试。"
+    ]
+  },
+  "candidates": [
+    {
+      "source_id": "S014",
+      "title": "于都河畔启征程",
+      "publisher": "中国档案报",
+      "quote": "于都是中央红军长征集结出发地，90多年前那场震惊世界的伟大远征的序章，就被一件件珍贵的红色档案真实地记录下来。",
+      "predicate": "事件地点",
+      "value": "中央红军长征集结出发地",
+      "locator_hint": {
+        "paragraph": 5,
+        "heading_path": [
+          "于都河畔启征程",
+          "——中央红军长征出发时刻"
+        ],
+        "url_anchor": null
+      },
+      "note": ""
+    },
+    {
+      "source_id": "S014",
+      "title": "于都河畔启征程",
+      "publisher": "中国档案报",
+      "quote": "8.6万余人的红色大军从中央苏区各个战场有序撤离，一步步向于都河畔集结",
+      "predicate": "事件结果",
+      "value": "8.6万余人",
+      "locator_hint": {
+        "paragraph": 5,
+        "heading_path": [
+          "于都河畔启征程",
+          "——中央红军长征出发时刻"
+        ],
+        "url_anchor": null
+      },
+      "note": "与 S043 同数（P9 正例对照）"
+    },
+    {
+      "source_id": "S014",
+      "title": "于都河畔启征程",
+      "publisher": "中国档案报",
+      "quote": "16日，中央红军各部队在于都河以北地区集结完毕。",
+      "predicate": "事件时间",
+      "value": "16日",
+      "locator_hint": {
+        "paragraph": 21,
+        "heading_path": [
+          "于都河畔启征程",
+          "——中央红军长征出发时刻"
+        ],
+        "url_anchor": null
+      },
+      "note": "年份依赖上文（10月）——value 只标句内字面"
+    },
+    {
+      "source_id": "S014",
+      "title": "于都河畔启征程",
+      "publisher": "中国档案报",
+      "quote": "从于都县城东门、南门、西门渡口和梓山山峰坝、罗坳孟口、靖石渔翁埠等渡口，先后南渡于都河",
+      "predicate": "事件地点",
+      "value": "东门、南门、西门渡口和梓山山峰坝、罗坳孟口、靖石渔翁埠等渡口",
+      "locator_hint": {
+        "paragraph": 21,
+        "heading_path": [
+          "于都河畔启征程",
+          "——中央红军长征出发时刻"
+        ],
+        "url_anchor": null
+      },
+      "note": ""
+    },
+    {
+      "source_id": "S043",
+      "title": "回望烽火来路 凝聚前行伟力",
+      "publisher": "求是网",
+      "quote": "90多年前，中央红军主力等8.6万余人从这里出发，踏上二万五千里漫漫征途",
+      "predicate": "事件结果",
+      "value": "8.6万余人",
+      "locator_hint": {
+        "paragraph": 9,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": "转载稿（求是网转新华网稿）"
+    },
+    {
+      "source_id": "S043",
+      "title": "回望烽火来路 凝聚前行伟力",
+      "publisher": "求是网",
+      "quote": "重现了1934年当地百姓送别红军出征时催人泪下的历史。",
+      "predicate": "事件时间",
+      "value": "1934年",
+      "locator_hint": {
+        "paragraph": 11,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": "转载稿；句子是情景剧介绍语境"
+    },
+    {
+      "source_id": "S072",
+      "title": "张太雷：愿化作震碎旧世界惊雷",
+      "publisher": "中国档案报",
+      "quote": "1898年，张太雷出生于江苏武进（今属常州市）",
+      "predicate": "生卒年",
+      "value": "1898年",
+      "locator_hint": {
+        "paragraph": 4,
+        "heading_path": [
+          "张太雷：愿化作震碎旧世界惊雷"
+        ],
+        "url_anchor": null
+      },
+      "note": "人物类；生年单源（无第二来源，零类验证位）"
+    },
+    {
+      "source_id": "S072",
+      "title": "张太雷：愿化作震碎旧世界惊雷",
+      "publisher": "中国档案报",
+      "quote": "1898年，张太雷出生于江苏武进（今属常州市）",
+      "predicate": "籍贯",
+      "value": "江苏武进（今属常州市）",
+      "locator_hint": {
+        "paragraph": 4,
+        "heading_path": [
+          "张太雷：愿化作震碎旧世界惊雷"
+        ],
+        "url_anchor": null
+      },
+      "note": "人物类；籍贯单源"
+    },
+    {
+      "source_id": "S072",
+      "title": "张太雷：愿化作震碎旧世界惊雷",
+      "publisher": "中国档案报",
+      "quote": "1927年12月12日，广州大北寺路，一群凶残的国民党特务举枪向一辆插着红旗的敞篷汽车扫射，车上人连中三弹，倒在血泊里。他就是被李大钊誉为“学贯中西，才华出众”的张太雷。",
+      "predicate": "生卒年",
+      "value": "1927年12月12日",
+      "locator_hint": {
+        "paragraph": 2,
+        "heading_path": [
+          "张太雷：愿化作震碎旧世界惊雷"
+        ],
+        "url_anchor": null
+      },
+      "note": "牺牲日期；含全角引文“学贯中西，才华出众”"
+    },
+    {
+      "source_id": "S072",
+      "title": "张太雷：愿化作震碎旧世界惊雷",
+      "publisher": "中国档案报",
+      "quote": "他就是被李大钊誉为“学贯中西，才华出众”的张太雷。",
+      "predicate": "人物关系",
+      "value": "李大钊",
+      "locator_hint": {
+        "paragraph": 2,
+        "heading_path": [
+          "张太雷：愿化作震碎旧世界惊雷"
+        ],
+        "url_anchor": null
+      },
+      "note": "评价型关系，阶段一抽取要判是否算关系条目"
+    },
+    {
+      "source_id": "S072",
+      "title": "张太雷：愿化作震碎旧世界惊雷",
+      "publisher": "中国档案报",
+      "quote": "奔走于京津两地，在北京大学（以下简称“北大”）研习马克思列宁主义，前往长辛店筹办劳动补习学校",
+      "predicate": "参与事件",
+      "value": "筹办劳动补习学校",
+      "locator_hint": {
+        "paragraph": 2,
+        "heading_path": [
+          "张太雷：愿化作震碎旧世界惊雷"
+        ],
+        "url_anchor": null
+      },
+      "note": ""
+    },
+    {
+      "source_id": "S020",
+      "title": "一份穿越烽火的贺电",
+      "publisher": "中国档案报",
+      "quote": "1936年10月9日，红一、红四方面军于甘肃会宁胜利会师；22日，红二方面军抵达甘肃隆德将台堡（今属宁夏西吉），与红一方面军会合。",
+      "predicate": "事件时间",
+      "value": "1936年10月9日",
+      "locator_hint": {
+        "paragraph": 2,
+        "heading_path": [
+          "一份穿越烽火的贺电",
+          "——重读1936年10月《中共中央等为庆祝红一、二、四方面军大会合通电》"
+        ],
+        "url_anchor": null
+      },
+      "note": "会宁/将台堡两句同块"
+    },
+    {
+      "source_id": "S020",
+      "title": "一份穿越烽火的贺电",
+      "publisher": "中国档案报",
+      "quote": "10月2日，红一方面军先遣部队攻占甘肃会宁城。",
+      "predicate": "事件时间",
+      "value": "10月2日",
+      "locator_hint": {
+        "paragraph": 6,
+        "heading_path": [
+          "一份穿越烽火的贺电",
+          "——重读1936年10月《中共中央等为庆祝红一、二、四方面军大会合通电》"
+        ],
+        "url_anchor": null
+      },
+      "note": ""
+    },
+    {
+      "source_id": "S020",
+      "title": "一份穿越烽火的贺电",
+      "publisher": "中国档案报",
+      "quote": "9日，红四方面军指挥部到达会宁，与红一方面军会合；10日，红一、红四方面军指战员在会宁县城文庙举行庆祝联欢大会。",
+      "predicate": "参与事件",
+      "value": "红四方面军指挥部到达会宁，与红一方面军会合",
+      "locator_hint": {
+        "paragraph": 6,
+        "heading_path": [
+          "一份穿越烽火的贺电",
+          "——重读1936年10月《中共中央等为庆祝红一、二、四方面军大会合通电》"
+        ],
+        "url_anchor": null
+      },
+      "note": ""
+    },
+    {
+      "source_id": "S020",
+      "title": "一份穿越烽火的贺电",
+      "publisher": "中国档案报",
+      "quote": "在临时搭起的主席台前，朱德总司令郑重宣读了这份《中共中央等为庆祝红一、二、四方面军大会合通电》。",
+      "predicate": "参与事件",
+      "value": "朱德",
+      "locator_hint": {
+        "paragraph": 6,
+        "heading_path": [
+          "一份穿越烽火的贺电",
+          "——重读1936年10月《中共中央等为庆祝红一、二、四方面军大会合通电》"
+        ],
+        "url_anchor": null
+      },
+      "note": ""
+    },
+    {
+      "source_id": "S149",
+      "title": "［乾隆］长沙府志五十卷首一卷",
+      "publisher": "湖南省地方志编纂院",
+      "quote": "（清）吕肃高修，张雄图、王文清纂。",
+      "predicate": "人物关系",
+      "value": "吕肃高修，张雄图、王文清纂",
+      "locator_hint": {
+        "paragraph": 1,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": "方志类：纂修者关系"
+    },
+    {
+      "source_id": "S149",
+      "title": "［乾隆］长沙府志五十卷首一卷",
+      "publisher": "湖南省地方志编纂院",
+      "quote": "肃高，字南村，河南新安（今渑池）人",
+      "predicate": "籍贯",
+      "value": "河南新安（今渑池）",
+      "locator_hint": {
+        "paragraph": 1,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": "吕肃高籍贯（单源）"
+    },
+    {
+      "source_id": "S149",
+      "title": "［乾隆］长沙府志五十卷首一卷",
+      "publisher": "湖南省地方志编纂院",
+      "quote": "是志修於乾隆十二年，阅九月成书，记事止於是年四月。",
+      "predicate": "事件时间",
+      "value": "乾隆十二年",
+      "locator_hint": {
+        "paragraph": 2,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": "繁体「於」两现，逐字保留"
+    },
+    {
+      "source_id": "S149",
+      "title": "［乾隆］长沙府志五十卷首一卷",
+      "publisher": "湖南省地方志编纂院",
+      "quote": "有乾隆十三年（1748）刻本。",
+      "predicate": "事件时间",
+      "value": "乾隆十三年（1748）",
+      "locator_hint": {
+        "paragraph": 4,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": ""
+    },
+    {
+      "source_id": "S145",
+      "title": "明嘉靖《长沙府志》（一）",
+      "publisher": "湖南省地方志编纂院",
+      "quote": "明嘉靖《长沙府志》六卷,明嘉靖十二年(1533年)修,为现存第一部长沙府志,原藏于日本国会图书馆。",
+      "predicate": "事件时间",
+      "value": "明嘉靖十二年(1533年)",
+      "locator_hint": {
+        "paragraph": 2,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": "半角逗号/括号/「修」结尾——原样保留"
+    },
+    {
+      "source_id": "S145",
+      "title": "明嘉靖《长沙府志》（一）",
+      "publisher": "湖南省地方志编纂院",
+      "quote": "(明)孙存潘镒修",
+      "predicate": "人物关系",
+      "value": "孙存潘镒修",
+      "locator_hint": {
+        "paragraph": 4,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": "全块即一条；半角括号"
+    },
+    {
+      "source_id": "S145",
+      "title": "明嘉靖《长沙府志》（一）",
+      "publisher": "湖南省地方志编纂院",
+      "quote": "(明)杨林张治纂",
+      "predicate": "人物关系",
+      "value": "杨林张治纂",
+      "locator_hint": {
+        "paragraph": 5,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": "全块即一条；半角括号"
+    },
+    {
+      "source_id": "S154",
+      "title": "赓续长征精神 奋进复兴征程 ｜ 把信仰写进地名——红军镇、瑞金村、胜利山，这三地因何得名",
+      "publisher": "新华网",
+      "quote": "1935年10月19日，中央红军主力到达陕北吴起镇。",
+      "predicate": "事件时间",
+      "value": "1935年10月19日",
+      "locator_hint": {
+        "paragraph": 36,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": "P10 冲突位：另源（S018 未在本批）作 10月18日 进入"
+    },
+    {
+      "source_id": "S154",
+      "title": "赓续长征精神 奋进复兴征程 ｜ 把信仰写进地名——红军镇、瑞金村、胜利山，这三地因何得名",
+      "publisher": "新华网",
+      "quote": "1935年10月19日，中央红军主力到达陕北吴起镇。",
+      "predicate": "事件地点",
+      "value": "陕北吴起镇",
+      "locator_hint": {
+        "paragraph": 36,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": ""
+    },
+    {
+      "source_id": "S154",
+      "title": "赓续长征精神 奋进复兴征程 ｜ 把信仰写进地名——红军镇、瑞金村、胜利山，这三地因何得名",
+      "publisher": "新华网",
+      "quote": "10月21日凌晨4时半，毛泽东从吴起镇新窑院的住所出发，登上平台山，在山顶的一棵杜梨树下召开战前动员大会",
+      "predicate": "参与事件",
+      "value": "召开战前动员大会",
+      "locator_hint": {
+        "paragraph": 38,
+        "heading_path": [],
+        "url_anchor": null
+      },
+      "note": ""
+    }
+  ]
+}

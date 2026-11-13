@@ -1,0 +1,117 @@
+{
+  "S001": [
+    {
+      "type": "event",
+      "name": "讲习所创设",
+      "summary": "本地红色学校讲习所的创设事件，含时间与学员构成。",
+      "claims": [
+        {
+          "subject": "讲习所",
+          "predicate": "事件时间",
+          "value": "一九二五年",
+          "quote": "讲习所于一九二五年创设，学员多为产业工人。",
+          "locator": {
+            "paragraph": 2,
+            "heading_path": ["示例文章标题", "第一节 创设"],
+            "quote": "讲习所于一九二五年创设，学员多为产业工人。",
+            "url_anchor": "p-2"
+          },
+          "confidence": 0.92
+        },
+        {
+          "subject": "讲习所",
+          "predicate": "事件结果",
+          "value": "创设，学员多为产业工人",
+          "quote": "讲习所于一九二五年创设，学员多为产业工人。",
+          "locator": {
+            "paragraph": 2,
+            "heading_path": ["示例文章标题", "第一节 创设"],
+            "quote": "讲习所于一九二五年创设，学员多为产业工人。",
+            "url_anchor": "p-2"
+          },
+          "confidence": 0.75
+        }
+      ]
+    },
+    {
+      "type": "person",
+      "name": "产业工人学员群体",
+      "summary": "讲习所早期学员的主体身份。",
+      "claims": [
+        {
+          "subject": "产业工人",
+          "predicate": "人物关系",
+          "value": "多为产业工人",
+          "quote": "讲习所于一九二五年创设，学员多为产业工人。",
+          "locator": {
+            "paragraph": 2,
+            "heading_path": ["示例文章标题", "第一节 创设"],
+            "quote": "讲习所于一九二五年创设，学员多为产业工人。",
+            "url_anchor": "p-2"
+          },
+          "confidence": 0.7
+        }
+      ]
+    },
+    {
+      "type": "place",
+      "name": "本地",
+      "summary": "解放事件发生的地点（fixture 文中未给出具体地名）。",
+      "claims": [
+        {
+          "subject": "本地",
+          "predicate": "事件地点",
+          "value": "本地",
+          "quote": "第二段正文，一九四九年四月本地解放。",
+          "locator": {
+            "paragraph": 3,
+            "heading_path": ["示例文章标题", "第二节 解放前后"],
+            "quote": "第二段正文，一九四九年四月本地解放。",
+            "url_anchor": "p-3"
+          },
+          "confidence": 0.6
+        }
+      ]
+    },
+    {
+      "type": "time",
+      "name": "一九四九年四月解放",
+      "summary": "本地解放的时间点。",
+      "claims": [
+        {
+          "subject": "本地解放",
+          "predicate": "事件时间",
+          "value": "一九四九年四月",
+          "quote": "第二段正文，一九四九年四月本地解放。",
+          "locator": {
+            "paragraph": 3,
+            "heading_path": ["示例文章标题", "第二节 解放前后"],
+            "quote": "第二段正文，一九四九年四月本地解放。",
+            "url_anchor": "p-3"
+          },
+          "confidence": 0.88
+        }
+      ]
+    },
+    {
+      "type": "relation",
+      "name": "讲习所—产业工人",
+      "summary": "机构与学员群体之间的关系。",
+      "claims": [
+        {
+          "subject": "讲习所",
+          "predicate": "人物关系",
+          "value": "学员多为产业工人",
+          "quote": "讲习所于一九二五年创设，学员多为产业工人。",
+          "locator": {
+            "paragraph": 2,
+            "heading_path": ["示例文章标题", "第一节 创设"],
+            "quote": "讲习所于一九二五年创设，学员多为产业工人。",
+            "url_anchor": "p-2"
+          },
+          "confidence": 0.65
+        }
+      ]
+    }
+  ]
+}

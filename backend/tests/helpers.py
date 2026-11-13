@@ -113,6 +113,13 @@ def write_whitelist(tmp_path, entries=None, name="来源白名单.yml"):
     return path
 
 
+def write_yaml(tmp_path, data, name="aliases.yml"):
+    """把 dict 写成 YAML 文件并返回路径（别名表之类的测试数据）。"""
+    path = tmp_path / name
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return path
+
+
 def whitelist_entry(name, **changes):
     """改默认白名单里某个条目的字段，返回新的条目列表（用于构造变体）。
 
