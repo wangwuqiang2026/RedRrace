@@ -1,0 +1,89 @@
+/* 全局基础样式：只引用 tokens，不出现任何硬编码色值（style-hardcode 测试扫描本文件）。 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-padding-top: calc(var(--header-height) + var(--space-4));
+}
+
+body {
+  margin: 0;
+  background: var(--paper-page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--line-height-body);
+  font-weight: var(--fw-normal);
+}
+
+h1, h2, h3 {
+  margin: 0;
+  text-wrap: balance;
+}
+
+a {
+  color: var(--link-blue);
+}
+
+/* 焦点可见（§6.1）：禁止 outline:none */
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* 跳到主内容（skip-link，§6.1）：非聚焦时移出视口但保留可 Tab 到达 */
+.skip-link {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translateY(-200%);
+  background: var(--paper-card);
+  color: var(--link-blue);
+  padding: var(--space-2) var(--space-4);
+  z-index: var(--z-toast);
+}
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* 等宽数字（§4.1 number-tabular） */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 长链接/ID 防撑破（§4.2 long-token-wrapping） */
+.wrap-anywhere {
+  overflow-wrap: anywhere;
+}
+
+/* 减弱动效（§6.4/§7） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 引用编号定位闪烁（§5.1：锚点滚动定位 + 1.2s 浅红底；清单 B4「有可见高亮」）。
+ * 类名由 CitationMark 的 jump() 动态加到出处卡片元素上，scoped 样式覆盖不到，
+ * 故定义在全局（M-1 修复：此前 JS 加类但样式零定义，高亮静默丢失）。
+ * 底色走 --brand-red-tint（规范 §3.2 引用号定位高亮闪烁底色）。 */
+.cite-flash {
+  animation: cite-flash 1.2s ease-out 1;
+}
+
+@keyframes cite-flash {
+  0% {
+    background-color: var(--brand-red-tint);
+  }
+  100% {
+    background-color: transparent;
+  }
+}

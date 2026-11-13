@@ -1,0 +1,91 @@
+/* RedTrace 设计 token —— 唯一色值/字号/间距来源（docs/设计规范.md §3、§4）。
+ * 组件里禁止出现任何硬编码色值（tests/style-hardcode.test.ts 自动扫描）。
+ * 命名沿用规范线名；浅底 token 以 `-bg` 后缀登记（规范 §3.3 表格「浅底色」列，
+ * 原名如 --disputed-bg 已在 lead 2026-11-13 口径确认沿用）。
+ */
+:root {
+  /* —— §3.1 中性基底（纸与墨）—— */
+  --paper-page: #FAFAF9;      /* 页面背景（Museum 底暖调微调） */
+  --paper-card: #FFFFFF;      /* 卡片/内容面 */
+  --paper-muted: #F1F1EF;     /* 次级面：拒答区底、元数据区底、表头底 */
+  --ink: #1F2430;             /* 正文、标题 */
+  --ink-inverse: #FFFFFF;     /* 深红底上的文字 */
+  --cite-grey: #475569;       /* 引用卡元数据、次要说明（citation grey） */
+  --line-border: #E3E1DC;     /* 边框仅装饰性分隔，不承载信息（§6.4） */
+
+  /* —— §3.2 品牌红（仅点缀与小面积）—— */
+  --brand-red: #8E2430;
+  --brand-red-deep: #7A1E28;  /* 主按钮 hover/pressed */
+  --brand-red-tint: #F8EEEC;  /* 冲突提示条底色、引用定位闪烁底色 */
+
+  /* —— §3.3 语义色（状态必须 颜色+图标+文字 三通道，R4）—— */
+  --link-blue: #1E4FA3;       /* 出处链接、上标引用编号、回链 */
+  --disputed: #8A5300;        /* 存疑/两处记载不一致/年代待考 */
+  --disputed-bg: #FAF0DC;
+  --pass-green: #166534;      /* 审核通过 */
+  --pass-green-bg: #EAF2EC;
+  --revise: #92400E;          /* 审核需修改 */
+  --revise-bg: #FAF0DC;
+  --refusal-ink: #33526B;     /* 拒答=说明不是报错（R3，lead 裁决 6） */
+  --refusal-bg: var(--paper-muted);
+  --error-red: #A02020;       /* 技术故障专用，必须伴随「重试」按钮 */
+  --error-red-bg: #F8E8E8;
+
+  /* —— §4.1 字体栈：默认态走系统中文回退链，禁止 Web Font/CDN（清单 J2）—— */
+  --font-serif: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", SimSun, serif;
+  --font-sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, monospace;
+
+  /* —— §4.2 字号阶梯 12/14/16/18/24/32；正文行高 1.75 —— */
+  --text-display: 32px;
+  --line-height-display: 1.3;
+  --text-h1: 24px;
+  --line-height-h1: 1.4;
+  --text-h2: 18px;
+  --line-height-h2: 1.5;
+  --text-body: 16px;
+  --line-height-body: 1.75;
+  --text-meta: 14px;
+  --line-height-meta: 1.6;
+  --text-caption: 12px;       /* 仅徽标文字与角注，不得用于连续阅读文本 */
+  --line-height-caption: 1.5;
+  --text-sup: 12px;           /* 引用编号上标 */
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* —— §4.3 间距（4pt 基准）与布局 —— */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --container-width: 1080px;
+  --answer-column-width: 42em; /* 问答页正文栏（§4.2 行长） */
+  --header-height: 56px;       /* 顶栏（§5）；滚动加 scroll-padding-top */
+  --radius-1: 4px;
+
+  /* —— z-index 分层（§4.3）—— */
+  --z-base: 0;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-header: 40;
+  --z-overlay: 100;
+  --z-toast: 1000;
+
+  /* —— §6.1 焦点环 ——（规范 F3 修订已定稿：全站唯一定义 2px + outline-offset 2px） */
+  --focus-ring-width: 2px;
+  --focus-ring: var(--focus-ring-width) solid var(--link-blue);
+  --focus-ring-offset: 2px;
+
+  /* —— 断点说明（CSS 变量不能用于 media query，此处仅登记口径供注释引用）——
+   * 375 / 768 / 1024 / 1440；窄屏 <768px 冲突两卡纵向堆叠（§5.2 第 4 条）。 */
+
+  /* —— 已登记但未落地的 token 注记（M-2/lead 口径）——
+   * `--pending-line`（#A9824A，年代待考区左缘竖线）已按规范 F4 修订登记入 §3.3；
+   * 壳阶段无使用场景，按 lead 指令不落本文件，阶段五时间轴接入时再添加（仅图形线，禁作文字前景）。 */
+}

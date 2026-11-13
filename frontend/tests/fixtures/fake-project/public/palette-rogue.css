@@ -1,0 +1,4 @@
+/* 破坏法 M3：模拟 public/ 下被 index.html 直挂的样式文件（不在 src/ 扫描集内的逃逸面） */
+:root { --sneak: #BEEF00; }
+.sneaky { color: #FF0000; }
+.sneaky2 { background: rgba(255, 0, 0, 0.5); }

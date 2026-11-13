@@ -1,0 +1,5 @@
+packages:
+  - '.'
+# pnpm 11 起构建审批用 allowBuilds（onlyBuiltDependencies 已失效，见 pnpm CHANGELOG）
+allowBuilds:
+  esbuild: true

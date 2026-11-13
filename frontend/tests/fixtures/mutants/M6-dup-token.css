@@ -1,0 +1,10 @@
+/* 破坏法 M6：:root 首个定义正确，media query 里覆盖成非法值。
+ * 修复后的 resolver 必须按层叠语义返回【最后一个】定义 → '#BEEF00' ≠ '#1F2430'，主断言即破。 */
+:root {
+  --ink: #1F2430;
+}
+@media (max-width: 1024px) {
+  :root {
+    --ink: #BEEF00;
+  }
+}
