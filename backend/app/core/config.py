@@ -26,7 +26,12 @@ class Config(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_ROOT / ".env",
-        env_file_encoding="utf-8",
+        # utf-8-sig：Windows 记事本另存 .env 默认写 BOM，用 utf-8 解析时首个键名被 BOM
+        # 字符污染、整行静默失效（改了配置却按默认跑，比崩溃更难查）。无 BOM 的文件不受影响。
+        env_file_encoding="utf-8-sig",
+        # .env.example 的本意是「不用填的键留空」；若把空串当成已提供的值，
+        # Literal 字段会直接 ValidationError，导致照文档 cp 一份 .env 就启动即崩。
+        env_ignore_empty=True,
         extra="ignore",
     )
 

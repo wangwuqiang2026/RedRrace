@@ -9,6 +9,19 @@ import csv
 
 import yaml
 
+# .env / 环境变量里的 8 个键。测试前用它清理宿主环境，否则外部设了 RETRIEVAL_BACKEND
+# 之类会让默认值断言误报（终审 M-5）。
+CONFIG_ENV_KEYS = [
+    "LLM_BACKEND",
+    "LLM_BASE_URL",
+    "LLM_API_KEY",
+    "LLM_MODEL",
+    "RETRIEVAL_BACKEND",
+    "RAGFLOW_BASE_URL",
+    "RAGFLOW_API_KEY",
+    "DATA_DIR",
+]
+
 # 登记表九列，顺序与 load_registry 要求一致
 COLUMNS = [
     "source_id",
@@ -81,7 +94,9 @@ def write_registry(tmp_path, *rows, name="reg.csv"):
         writer = csv.DictWriter(fh, fieldnames=COLUMNS)
         writer.writeheader()
         for item in rows:
-            writer.writerow({col: str(item.get(col, "")) for col in COLUMNS})
+            # 字段值给 None 要落成空单元格：str(None) 会写出字面量 "None"，
+            # 既骗不过真实采编，也会让「留空被拒」的用例悄悄变形。
+            writer.writerow({col: "" if item.get(col) is None else str(item[col]) for col in COLUMNS})
     return path
 
 

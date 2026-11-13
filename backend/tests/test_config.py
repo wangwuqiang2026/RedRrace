@@ -3,20 +3,10 @@
 from pathlib import Path
 
 import pytest
+from helpers import CONFIG_ENV_KEYS
 from pydantic import ValidationError
 
 from app.core.config import Config, get_config
-
-ALL_ENV_KEYS = [
-    "LLM_BACKEND",
-    "LLM_BASE_URL",
-    "LLM_API_KEY",
-    "LLM_MODEL",
-    "RETRIEVAL_BACKEND",
-    "RAGFLOW_BASE_URL",
-    "RAGFLOW_API_KEY",
-    "DATA_DIR",
-]
 
 # backend/ 目录：配置里的默认路径必须锚在它下面，不能随进程 cwd 漂移
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +15,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
     """默认值测试不受宿主环境变量干扰。"""
-    for key in ALL_ENV_KEYS:
+    for key in CONFIG_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
 
 
@@ -53,16 +43,35 @@ def test_config_accepts_documented_llm_backends(monkeypatch, backend):
     assert get_config().llm_backend == backend
 
 
-@pytest.mark.parametrize("value", ["cloud", "bge-m3", ""])
+@pytest.mark.parametrize("value", ["cloud", "bge-m3"])
 def test_config_rejects_unknown_retrieval_backend(monkeypatch, value):
     monkeypatch.setenv("RETRIEVAL_BACKEND", value)
     with pytest.raises(ValidationError):
         get_config()
 
 
-@pytest.mark.parametrize("value", ["gpt", "dashscope", ""])
+@pytest.mark.parametrize("value", ["gpt", "dashscope"])
 def test_config_rejects_unknown_llm_backend(monkeypatch, value):
     monkeypatch.setenv("LLM_BACKEND", value)
+    with pytest.raises(ValidationError):
+        get_config()
+
+
+# C-2 带来的口径变更：留空 = 不填，回落默认值而不是报错。
+# 原用例把「空串必须 ValidationError」固化成了期望，而那正是「照 .env.example 复制即崩」的根因，
+# 故改为断言回落默认，并另立一条把「空格不算留空」的边界钉住。
+@pytest.mark.parametrize(
+    "key,default", [("RETRIEVAL_BACKEND", "local"), ("LLM_BACKEND", "online")]
+)
+def test_config_empty_env_value_falls_back_to_default(monkeypatch, key, default):
+    monkeypatch.setenv(key, "")
+    assert getattr(get_config(), key.lower()) == default
+
+
+@pytest.mark.parametrize("key", ["RETRIEVAL_BACKEND", "LLM_BACKEND"])
+def test_config_whitespace_env_value_is_not_treated_as_empty(monkeypatch, key):
+    """只留空格不是「留空」，仍应报错，避免把笔误静默当成默认配置。"""
+    monkeypatch.setenv(key, " ")
     with pytest.raises(ValidationError):
         get_config()
 
@@ -95,3 +104,26 @@ def test_config_env_file_is_absolute():
     assert paths, "env_file 不能为空"
     assert all(Path(p).is_absolute() for p in paths)
     assert any(Path(p).parent == BACKEND_ROOT for p in paths)
+
+
+def test_config_accepts_env_example_copied_verbatim(tmp_path):
+    """C-2：按 .env.example 首行指引「复制为 .env」必须能跑，留空的枚举键回落默认值。
+
+    .env.example 的本意是让不填的键留空；若空串被当成已提供的值，Literal 字段会直接炸，
+    每个人第一天的 `cp .env.example .env` 都会让 get_config() 报错、/api/health 500。
+    """
+    env = tmp_path / ".env"
+    env.write_bytes((BACKEND_ROOT / ".env.example").read_bytes())
+    cfg = Config(_env_file=env)
+    assert cfg.llm_backend == "online"
+    assert cfg.retrieval_backend == "local"
+    assert cfg.llm_api_key == ""
+
+
+def test_config_reads_env_file_with_bom(tmp_path):
+    """I-4：Windows 记事本另存 .env 默认带 BOM，不能让首个键被静默吞掉。"""
+    env = tmp_path / ".env"
+    env.write_bytes("\ufeffRETRIEVAL_BACKEND=ragflow\nLLM_MODEL=bge-m3\n".encode("utf-8"))
+    cfg = Config(_env_file=env)
+    assert cfg.retrieval_backend == "ragflow"
+    assert cfg.llm_model == "bge-m3"
