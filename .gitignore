@@ -18,11 +18,19 @@ backend/data/index/
 backend/data/exports/
 backend/data/*.db
 backend/data/校对记录.csv
+backend/data/待人工补录.csv
+
+# 契约生成物（由 backend/scripts/export_openapi.py 产出，前端 pnpm gen:api 的输入，不入库）
+backend/openapi.json
 
 # 前端
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/*.tsbuildinfo
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
 
 # 编辑器与工具产物
 .superpowers/

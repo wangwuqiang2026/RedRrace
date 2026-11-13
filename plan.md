@@ -592,7 +592,7 @@ def test_threshold_separates_answerable_and_not(index):
 def test_ask_alumnus_role_in_event(client, seeded_db):
     r = client.post("/api/ask", json={"question": "某位校友在哪个历史事件中发挥了什么作用？"})
     body = r.json()
-    assert body["refused"] is False
+    assert body["refusal"] is False
     assert body["citations"], "回答必须附出处"
     assert all(c["source"]["title"] and (c["source"].get("page") or c["source"].get("url")) for c in body["citations"])
     assert all(c["verified"] for c in body["citations"])
@@ -617,8 +617,8 @@ def test_ask_alumnus_role_in_event(client, seeded_db):
 ```python
 def test_refuse_unknown_person(client, seeded_db):
     body = client.post("/api/ask", json={"question": "知识库里没有的某红色人物，他是谁？"}).json()
-    assert body["refused"] is True
-    assert body["refusal_reason"] == "not_in_corpus"
+    assert body["refusal"] is True                      # 字段名以 backend/app/qa/schemas.py 为准
+    assert body["refusal_reason"] == "not_covered"      # 未收录；无证据是 "no_evidence"
     assert "未收录" in body["answer"]
     assert body["suggestions"], "应给出最接近的已收录人物供参考"
     assert all(s["source"]["title"] for s in body["suggestions"])
@@ -696,7 +696,7 @@ def test_killer_contradictory_date(client, seeded_db):
     inject_contradictory_record("校史片段.pdf", add_page_text="……1949 年 5 月解放……")
     rebuild_index()
     body = client.post("/api/ask", json={"question": "该地是什么时候解放的？"}).json()
-    assert body["refused"] is False
+    assert body["refusal"] is False
     assert "两处记载不一致" in body["answer"] or "存疑" in body["answer"]
     conflict = body["conflicts"][0]
     assert len(conflict["values"]) == 2
