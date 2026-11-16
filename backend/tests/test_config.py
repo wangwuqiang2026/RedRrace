@@ -98,12 +98,31 @@ def test_config_data_dir_independent_of_cwd(monkeypatch, tmp_path):
 
 
 def test_config_env_file_is_absolute():
-    """.env 也要锚在 backend/ 下，否则换个 cwd 就静默读不到配置。"""
-    raw = Config.model_config["env_file"]
-    paths = raw if isinstance(raw, (list, tuple)) else [raw]
-    assert paths, "env_file 不能为空"
-    assert all(Path(p).is_absolute() for p in paths)
-    assert any(Path(p).parent == BACKEND_ROOT for p in paths)
+    """.env 默认锚在 backend/ 下，否则换个 cwd 就静默读不到配置。
+
+    核的是声明常量 `ENV_FILE` 而不是 `Config.model_config`：会话 fixture 会把后者临时置空
+    以隔离本机部署 key（conftest.isolate_dotenv），拿 model_config 断言会因测试隔离而假红。
+    """
+    from app.core.config import ENV_FILE
+
+    assert ENV_FILE.is_absolute()
+    assert ENV_FILE.parent == BACKEND_ROOT
+
+
+def test_deploy_dotenv_stays_out_of_test_session():
+    """部署用的 backend/.env 不得参与测试语义（2026-11-16 实测的根因修复）。
+
+    本机一旦按运行手册填入真实 key，`test_config_defaults` 与「缺配置必须大声报错」那批用例
+    就再也造不出缺失而转红。这条测试把隔离本身钉住：撤掉 fixture 时先在明确的位置红，
+    而不是让那批用例在别处以难以解释的方式失败。
+    """
+    from app.core.config import ENV_FILE
+
+    if not ENV_FILE.exists():
+        pytest.skip("本机无 backend/.env，隔离无从体现——有值的环境才是这条测试的真实战场")
+    cfg = get_config()
+    assert cfg.llm_api_key == "", ".env 泄漏进测试会话：conftest.isolate_dotenv 未生效"
+    assert cfg.llm_model == ""
 
 
 def test_config_accepts_env_example_copied_verbatim(tmp_path):

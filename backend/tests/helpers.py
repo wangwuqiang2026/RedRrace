@@ -9,18 +9,12 @@ import csv
 
 import yaml
 
-# .env / 环境变量里的 8 个键。测试前用它清理宿主环境，否则外部设了 RETRIEVAL_BACKEND
-# 之类会让默认值断言误报（终审 M-5）。
-CONFIG_ENV_KEYS = [
-    "LLM_BACKEND",
-    "LLM_BASE_URL",
-    "LLM_API_KEY",
-    "LLM_MODEL",
-    "RETRIEVAL_BACKEND",
-    "RAGFLOW_BASE_URL",
-    "RAGFLOW_API_KEY",
-    "DATA_DIR",
-]
+from app.core.config import Config
+
+# 测试前用它清理宿主环境变量，否则外部设了 RETRIEVAL_BACKEND 之类会让默认值断言误报（终审 M-5）。
+# 键名从 Config 字段派生，不再手抄：原注释写着「8 个键」，而 2026-11-16 加入 18 个云端参数后
+# 这份手抄清单就与实际脱节了——漏一项就等于让宿主环境静默影响一条用例。
+CONFIG_ENV_KEYS = [name.upper() for name in Config.model_fields]
 
 # 登记表九列，顺序与 load_registry 要求一致
 COLUMNS = [

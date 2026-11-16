@@ -59,6 +59,25 @@ def isolate_write_targets(tmp_path_factory):
 
 
 @pytest.fixture(scope="session", autouse=True)
+def isolate_dotenv():
+    """测试会话一律不读 `backend/.env`。
+
+    根因（2026-11-16 实测）：`Config` 的 `env_file` 固化指向 `backend/.env`。部署时按运行手册
+    把真实 key 填进去之后，`test_config_defaults` 与两条「缺配置必须大声报错」的用例一起转红——
+    它们隐含依赖「仓库里没有 .env」这一脆弱前提，而可交付的部署恰恰要求它有 key。
+    本机配置不该改变被测语义，所以整套件默认屏蔽 .env；需要 .env 行为的用例一律显式
+    `Config(_env_file=...)` 自造文件（`test_config.py` 现有两个用例已是这种写法）。
+    """
+    from app.core.config import ENV_FILE, Config
+
+    Config.model_config["env_file"] = None
+    try:
+        yield
+    finally:
+        Config.model_config["env_file"] = ENV_FILE
+
+
+@pytest.fixture(scope="session", autouse=True)
 def guard_project_directory(data_snapshot, isolate_write_targets):
     """会话结束再核一次：谁要是绕过了隔离把文件写进项目目录，整套件直接失败。"""
     yield
