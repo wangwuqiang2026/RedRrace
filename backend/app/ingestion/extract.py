@@ -47,6 +47,15 @@ VALID_PREDICATES = {
 # 首次 + 重试两次（plan 步骤 7「抽取失败重试两次后转人工补录」）
 MAX_ATTEMPTS = 3
 
+# 在线抽取单次请求超时（秒）。原先是调用点上的裸数字 `timeout=120`，落在 T0 实测的两个数之间：
+# 漏发 `enable_thinking=false` 时单次 140.5s、发了 9.8s（决策记录 007 第五节 A/B；T0 报告 §2.3）。
+# 120s 于是把「配置项没接线」伪装成「网络偶发超时」——再乘 MAX_ATTEMPTS 就是每单元最多 6 分钟
+# 纯等待，并把 ReadTimeout 刷进人工补录表，掩盖真实故障。取 300s 的依据：长文档 S020 实测
+# 63–67s 需要余量，而真慢（推理未关）应表现为「慢得离谱」而非「刚好超时」。
+# 未做成 Config 字段的原因见 task15-report.md：新增配置项须先经 lead 裁决并同步 `.env.example`
+# （规范 7.10 第④条、裁决 D11 的单点归属），本任务写范围不含 `core/config.py`。
+LLM_TIMEOUT_S = 300
+
 # 人工补录表的三列
 BACKLOG_COLUMNS = ("source_id", "reason", "excerpt")
 
@@ -144,6 +153,21 @@ class StubExtractor:
         return copy.deepcopy(cards)
 
 
+def _cards_from_response(content: str) -> list[dict[str, Any]]:
+    """把模型回复正文解析成卡片列表，兼容**顶层就是数组**的形态。
+
+    提示词要求的是 `{"cards": [...]}`，但 T0 实测 12 次调用里有 1 次（S020）返回顶层数组，
+    旧写法 `json.loads(content).get("cards")` 当场抛 `AttributeError: 'list' object has no
+    attribute 'get'` → `_extract_with_retries` 捕获后重试，等于白烧一次付费调用（第二次才拿到
+    合法对象）。两种形态在语义上等价，所以在此归一；畸形形态（字符串、数字、缺 cards）一律
+    照旧抛错走重试与人工补录——**不得**为了让解析通过而放宽引文/谓词兜底（禁止清单 8.13、8.10）。
+    """
+    parsed = json.loads(content)
+    if isinstance(parsed, list):
+        return parsed
+    return parsed.get("cards", [])
+
+
 class LlmExtractor:
     """在线大模型抽取后端。
 
@@ -181,7 +205,12 @@ class LlmExtractor:
         )
 
     def extract(self, doc: ParsedDoc, source: SourceRecord) -> list[dict[str, Any]]:
-        """调用在线接口并返回原始卡片字典。本轮无 key，此路径未被真实验证。"""
+        """调用在线接口并返回原始卡片字典。
+
+        本方法**已被真实验证**（T1.5，2026-11-16：S001/S017/S013/S005 四个单元实跑，见
+        `task15-report.md` 第五节）。原先这句写的是「本轮无 key，此路径未被真实验证」——
+        那是阶段一交付时的状态；按规范 3.6，口径变更时在此注明日期与原因，不留过期表述。
+        """
         import httpx
 
         response = httpx.post(
@@ -190,17 +219,24 @@ class LlmExtractor:
             json={
                 "model": self.cfg.llm_model,
                 "temperature": 0,
+                # 混合思考开关必须**显式发送**，包括值为 False 的情况：该供应商在参数缺省时默认
+                # 开启推理 token，实测单次 140.5s（reasoning 占 completion 的 89%）vs 关闭后
+                # 9.8s，JSON 合规性不降（决策记录 007 第五节）。`config.py` 早就有
+                # `llm_enable_thinking` 但请求体从不带它——「配置写了、行为没生效」正是规范 4.13
+                # 要防的形态，也是试点入库只能靠运行期注入参数跑通、数字无法复现的根因。
+                # ⚠️ 换供应商须逐项确认该扩展参数是否支持（OpenAI 官方 schema 无此项），
+                #    已登记为阶段八运行手册必查项（007 第五节附注②）。
+                "enable_thinking": bool(self.cfg.llm_enable_thinking),
                 "messages": [
                     {"role": "system", "content": "只输出 JSON，不得输出解释。"},
                     {"role": "user", "content": self.build_prompt(doc)},
                 ],
             },
-            timeout=120,
+            timeout=LLM_TIMEOUT_S,
         )
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
-        parsed = json.loads(content)
-        return self._attach_paragraphs(parsed.get("cards", []), doc)
+        return self._attach_paragraphs(_cards_from_response(content), doc)
 
     @staticmethod
     def _attach_paragraphs(cards: list[dict[str, Any]], doc: ParsedDoc) -> list[dict[str, Any]]:

@@ -13,6 +13,9 @@
 - **卡片与条目数一律以库里真实行数为准**（写完再 `COUNT(*)` 回读），桩件产出多少就报多少；
   不满 plan 的 120 张卡 / 400 条时照实打印缺口与原因，**不往桩件里塞条目凑数**。
 - 无 LLM key 时只能显式用桩件，输出第一行就自报「抽取后端=stub」。
+- **dry-run 的统计口径**（T1.5 修正，此前该假设是错的）：只做解析与统计，**不调用抽取后端**、
+  不写库、不写 `data/parsed`。所以 dry-run 看到的卡片/条目数恒为 0，它回答的是「有多少单元能解析」，
+  不是「能抽出多少条」。旧行为下 dry-run 与实跑一样全额付费（T0 报告 §2.2）。
 """
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ from app.ingestion.extract import (
     extract_cards,
 )
 from app.ingestion.normalize import normalize_time
-from app.ingestion.parse import parse_document
+from app.ingestion.parse import parse_document, save_parsed
 from app.ingestion.registry import (
     SourceRecord,
     default_whitelist_path,
@@ -97,7 +100,10 @@ class Stats:
             ),
         ]
         if self.dry_run:
-            out.append("模式=dry-run（只统计不写库）")
+            out.append(
+                "模式=dry-run（只解析与统计：未调用抽取后端、未写库、未写 data/parsed；"
+                "卡片与事实条目恒为 0，不是抽取产出）"
+            )
         out += [
             f"本轮纳入单元: {self.considered}",
             f"已可解析单元: {self.parsed_units}",
@@ -293,6 +299,23 @@ def ingest(
                 continue
             stats.parsed_units += 1
             stats.parsed_ids.append(record.source_id)
+            # 解析产物落 `<data_dir>/parsed/<source_id>.json`（计划阶段一步骤 3；审查 I5 的缺口：
+            # `save_parsed()` 此前在 CLI 没有任何调用点，跑完全量后目录仍为空，T0 试点那 11 个
+            # JSON 是靠运行期注入既有函数才产出的，复现不出来）。
+            # out_dir 显式传 `data_dir / "parsed"` 而不是留空走 `default_parsed_dir()`：后者读
+            # `Config.data_dir`（即环境变量 `DATA_DIR`），与本次 `--data-dir` 是两份来源——外部设了
+            # `DATA_DIR`、或同时给了 `--data-dir X` 时，产物会静默落到另一个目录（规范 8.13 禁止
+            # 这种静默分叉）。同一函数的既有测试（`test_parse_locator.py:433`）已锁住「不传参时跟
+            # DATA_DIR」，两条路径各有守卫。
+            # dry-run 连这里也不写——它的承诺是「只统计、不落任何盘」。
+            if not dry_run:
+                save_parsed(doc, data_dir / "parsed")
+            # dry-run **不调抽取后端**：`extract_cards` 每次都会打一次付费 LLM，原先它落在
+            # dry_run 判断之外，于是「先 dry-run 看看规模再实跑」这个省钱假设根本不成立
+            # （T0 报告 §2.2：dry-run 跑了 20 分钟无输出才被强制终止，期间每次调用都 140s+）。
+            # 代价如实写进输出行：dry-run 看不到卡片与条目数，只能看解析覆盖率。
+            if dry_run:
+                continue
             cards = extract_cards(doc, record, extractor, backlog_path=backlog)
             if not cards:
                 stats.backlog_ids.append(record.source_id)
@@ -322,7 +345,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--all", action="store_true", help="处理登记表全部行")
     parser.add_argument("--limit", type=int, default=None, help="只处理前 N 行")
     parser.add_argument("--source-id", default=None, help="只处理指定编号的行")
-    parser.add_argument("--dry-run", action="store_true", help="只统计不写库")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "只解析与统计：不调用抽取后端（零 LLM 花费）、不写库、不写 data/parsed；"
+            "因此「卡片总数 / 事实条目总数」恒为 0，不代表抽取产出"
+        ),
+    )
     parser.add_argument("--registry", default=None, help="登记表路径（默认 data/来源登记表.csv）")
     parser.add_argument("--data-dir", default=None, help="数据目录（默认 Config.data_dir）")
     parser.add_argument("--whitelist", default=None, help="白名单路径（默认 data_dir/来源白名单.yml）")

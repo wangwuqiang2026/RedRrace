@@ -10,16 +10,19 @@ import dataclasses
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 from helpers import row
 
 from app.ingestion.extract import (
+    MAX_ATTEMPTS,
     VALID_CARD_TYPES,
     VALID_PREDICATES,
     CardDraft,
     ClaimDraft,
     LlmExtractor,
     StubExtractor,
+    _extract_with_retries,
     extract_cards,
     match_quote,
 )
@@ -320,6 +323,177 @@ def test_llm_prompt_is_pinned_to_verbatim_quotes(monkeypatch):
     for block in fixture_doc().blocks:
         assert block.text in prompt
     assert "不得补全或推断" in prompt
+
+
+# ── T1.5 缺陷一：请求体必须真的带上 enable_thinking（P0，决策记录 007 第五节）──────────
+# 配置字段名 → 对应环境变量名（规范 4.1 要求报错点名环境变量；这里用同一份映射造配置值，
+# 不另抄一遍字符串，避免两处清单漂移）。测试会话由 conftest 的 isolate_dotenv 屏蔽本机
+# `.env`，宿主环境也可能残留 LLM_*，所以一律把值**显式传给 Config**，不靠 setenv。
+LLM_KEY_ENV = {
+    "llm_api_key": "sk-test",
+    "llm_base_url": "https://example.invalid/v1",
+    "llm_model": "m",
+}
+
+
+def llm_config(**over):
+    """造一份 LLM 配置完整的 Config（只覆盖 LLM 相关字段，其余走声明默认值）。
+
+    字段名先与 `Config.model_fields` 核一次再构造：手抄的字段清单在配置改名后会静默失效，
+    那时「随配置变化」的断言就变成永真式（规范 5.5 / 5.9 同一动机）。
+    """
+    from app.core.config import Config
+
+    wanted = dict(LLM_KEY_ENV)
+    wanted["llm_enable_thinking"] = False
+    unknown = set(wanted) - set(Config.model_fields)
+    assert not unknown, f"Config 里已不存在这些字段，测试要同步改名：{sorted(unknown)}"
+    wanted.update(over)
+    return Config(**wanted)
+
+
+class CapturedPost:
+    """替身：记下请求体与 timeout 并返回可编排的响应内容，绝不联网（规范 5.17）。
+
+    `content` 是模型回复正文（默认一张空 cards），P6 的用例改它来喂不同响应形态。
+    """
+
+    def __init__(self):
+        self.bodies = []
+        self.timeouts = []
+        self.content = json.dumps({"cards": []})
+
+    def __call__(self, url, **kwargs):
+        self.bodies.append(kwargs["json"])
+        self.timeouts.append(kwargs.get("timeout"))
+        payload = {"choices": [{"message": {"content": self.content}}]}
+        return httpx.Response(200, json=payload, request=httpx.Request("POST", url))
+
+
+@pytest.fixture
+def capture_post(monkeypatch):
+    captured = CapturedPost()
+    monkeypatch.setattr(httpx, "post", captured)
+    return captured
+
+
+def test_llm_request_body_carries_enable_thinking(capture_post):
+    """007 第五节实测：省略该字段等于**开启**推理，单次 140.5s 必撞超时。
+
+    所以 False 也必须出现在请求体里——只测「True 时带 True」是假绿，漏发 False 才是本次事故。
+    """
+    doc, source = fixture_doc(), fixture_source()
+    LlmExtractor(config=llm_config()).extract(doc, source)
+    assert len(capture_post.bodies) == 1, f"应当恰好一次调用，实际 {len(capture_post.bodies)}"
+    body = capture_post.bodies[0]
+    assert "enable_thinking" in body, (
+        "请求体缺 enable_thinking：供应商缺省开启推理 token（007 第五节实测 reasoning 占 89%），"
+        "配置项写了却没发出去，属规范 4.13 要防的「界面显示关闭、实际全开」"
+    )
+    assert body["enable_thinking"] is False, "False 必须原样发送，不得因为「是默认值」就省略"
+
+
+def test_llm_request_enable_thinking_follows_config(capture_post):
+    """该字段跟着配置走：`LLM_ENABLE_THINKING=true` 时必须变成 True（规范 5.18 计数 + 取值）。"""
+    doc, source = fixture_doc(), fixture_source()
+    LlmExtractor(config=llm_config(llm_enable_thinking=True)).extract(doc, source)
+    assert capture_post.bodies[0]["enable_thinking"] is True, (
+        "配置打开推理却仍发 false：说明请求体把值写死了，配置项形同虚设"
+    )
+
+
+def test_llm_timeout_is_module_constant_with_evidence():
+    """超时不得散写在调用点（规范 D11 精神 / 4.11 大写常量口径）。
+
+    依据：007 第五节 A/B 实测——不发 `enable_thinking=false` 单次 140.5s，发了 9.8s。
+    120s 落在两者之间，意味着「漏发参数」这种配置接线错误会伪装成网络故障：必然超时 ×
+    3 次重试 = 每单元最多 6 分钟纯等待，还把失败原因刷进人工补录表（T0 报告 §2.2）。
+    提到 300s 之后，真慢（长文档 S020 实测 63–67s）有足够余量，而漏发参数的症状重新变回
+    「慢得离谱」而不是「偶发超时」。
+    """
+    from app.ingestion import extract as extract_module
+
+    assert hasattr(extract_module, "LLM_TIMEOUT_S"), (
+        "超时仍是调用点的裸数字：改一次要动生产代码，且测试无从断言（规范 4.11）"
+    )
+    value = extract_module.LLM_TIMEOUT_S
+    assert isinstance(value, (int, float)) and not isinstance(value, bool)
+    assert value >= 300, (
+        f"超时 {value}s 低于 300s：会重新落入 140.5s（漏发参数）与 120s 之间的盲区，"
+        "把配置接线错误伪装成网络抖动"
+    )
+
+
+def test_llm_request_sends_configured_timeout(capture_post):
+    """常量必须真的传到 httpx，否则提它只是给评审看的装饰（规范 5.18）。"""
+    from app.ingestion.extract import LLM_TIMEOUT_S
+
+    doc, source = fixture_doc(), fixture_source()
+    LlmExtractor(config=llm_config()).extract(doc, source)
+    assert capture_post.timeouts == [LLM_TIMEOUT_S], (
+        f"实际 timeout={capture_post.timeouts}，常量={LLM_TIMEOUT_S}：调用点没接上配置值"
+    )
+
+
+def test_llm_response_top_level_array_is_accepted_without_retry(capture_post):
+    """P6（lead 裁决 R16）：模型偶发返回**顶层数组**而非 `{"cards": [...]}`。
+
+    T0 实测 12 次调用命中 1 次（task0-report §三）。现状是 `.get` 抛
+    `AttributeError: 'list' object has no attribute 'get'` → `_extract_with_retries` 捕获后
+    重试，白烧一次付费调用。兼容它等价于 `{"cards": <该 list>}`；卡片内容仍走 extract_cards
+    的引文/谓词兜底，**不因此放宽任何校验**（禁止清单 8.13、8.10）。
+    """
+    doc, source = fixture_doc(), fixture_source()
+    claim = good_claim()
+    del claim["locator"]  # 模型形态：只给段号，locator 由 _attach_paragraphs 补出来
+    claim["paragraph"] = 2
+    cards = [
+        {
+            "type": "event",
+            "name": "讲习所创设",
+            "summary": "演示卡片",
+            "claims": [claim],
+        }
+    ]
+    capture_post.content = json.dumps(cards, ensure_ascii=False)
+    out = LlmExtractor(config=llm_config()).extract(doc, source)
+    assert len(out) == 1 and out[0]["name"] == "讲习所创设", "顶层数组必须原样当作 cards 处理"
+    locator = out[0]["claims"][0]["locator"]
+    assert locator and locator["paragraph"] == 2, "_attach_paragraphs 照常把段号换成完整 Locator"
+
+
+def test_top_level_array_does_not_trigger_a_second_call(capture_post):
+    """计数断言（规范 5.18）：兼容形态不得触发重试——重试就是再花一次钱。"""
+    doc, source = fixture_doc(), fixture_source()
+    claim = good_claim()
+    del claim["locator"]
+    claim["paragraph"] = 2
+    capture_post.content = json.dumps(
+        [{"type": "event", "name": "n", "summary": "s", "claims": [claim]}],
+        ensure_ascii=False,
+    )
+    extractor = LlmExtractor(config=llm_config())
+    cards = extract_cards(doc, source, extractor)
+    assert len(capture_post.bodies) == 1, (
+        f"顶层数组形态实际发生 {len(capture_post.bodies)} 次 HTTP 调用：说明仍在靠重试自愈，"
+        "每次都是白烧的付费调用"
+    )
+    assert len(cards) == 1, "合格卡片应正常产出，不该因形态问题落进人工补录"
+
+
+@pytest.mark.parametrize("content", ['"一堆文字"', '{"cards": "不是列表"}', "[1, 2]", "{}"])
+def test_malformed_shapes_keep_existing_error_and_retry(capture_post, content):
+    """兼容之后仍需拒绝的畸形形态：报错口径不变（照旧异常 → 重试 → 转人工补录）。
+
+    只放开「顶层 list 即 cards」这一种已知形态；把字符串、数字一律当空结果返回属静默放行
+    （禁止清单 8.13），所以这里反向锁住「没有变成静默成功」。
+    """
+    doc, source = fixture_doc(), fixture_source()
+    capture_post.content = content
+    failing = LlmExtractor(config=llm_config())
+    raw, error = _extract_with_retries(doc, source, failing)
+    assert raw == [] and error is not None, f"畸形形态 {content!r} 不得被当成有效产出"
+    assert len(capture_post.bodies) == MAX_ATTEMPTS, "仍按既有口径重试到上限后转人工补录"
 
 
 # ── 审查 I3：引文匹配的口径与命中块归属 ──────────────────────────────────────────────

@@ -10,6 +10,7 @@
 抽取后端一律通过 `Extractor` 注入，统计函数不自己判断该用哪个后端。
 """
 
+import copy
 import json
 import sqlite3
 from pathlib import Path
@@ -322,6 +323,128 @@ def test_unknown_source_id_is_reported(tmp_path):
     data_dir, registry, whitelist = make_data_dir(tmp_path, articles=["S101"])
     with pytest.raises(ValueError, match="S999"):
         run_ingest(tmp_path, data_dir, registry, whitelist, [], db_name="m.db", source_id="S999")
+
+
+# ── T1.5 缺陷二：--dry-run 必须零 LLM 调用（P1）───────────────────────────────────────
+class CountingExtractor:
+    """计数替身：记录被调了几次抽取。
+
+    「确实没被调用」只能靠显式计数断言（规范 5.18），不能靠耗时或输出反推——T0 队友就是
+    以为 dry-run 省钱，跑了 20 分钟付费调用才被强制终止的（task0-report §2.2）。
+    """
+
+    def __init__(self, articles):
+        self._payload = stub_payload(list(articles))
+        self.calls = 0
+
+    def extract(self, doc, source):
+        self.calls += 1
+        return copy.deepcopy(self._payload.get(doc.source_id) or [])
+
+
+def test_dry_run_makes_zero_extractor_calls(tmp_path):
+    """dry-run 只做解析与统计，一次模型都不调。"""
+    data_dir, registry, whitelist = make_data_dir(tmp_path, articles=["S101", "S102"])
+    counter = CountingExtractor(["S101", "S102"])
+    stats = ingest(
+        registry_path=registry,
+        data_dir=data_dir,
+        whitelist_path=whitelist,
+        db_path=data_dir / "n.db",
+        extractor=counter,
+        dry_run=True,
+    )
+    assert stats.parsed_units == 2, "先锚定确定值：解析确实跑到了，否则 calls==0 是空转假绿（规范 5.13）"
+    assert counter.calls == 0, f"dry-run 仍调用抽取后端 {counter.calls} 次：每一次都是付费调用"
+
+
+def test_real_run_does_call_the_extractor(tmp_path):
+    """反向对照：非 dry-run 必须真的调用。
+
+    若把「跳过抽取」写成无条件分支，上一条会一起变绿——没有这条，前一条拦不住过度修复。
+    """
+    data_dir, registry, whitelist = make_data_dir(tmp_path, articles=["S101", "S102"])
+    counter = CountingExtractor(["S101", "S102"])
+    stats = ingest(
+        registry_path=registry,
+        data_dir=data_dir,
+        whitelist_path=whitelist,
+        db_path=data_dir / "o.db",
+        extractor=counter,
+        dry_run=False,
+    )
+    assert counter.calls == 2, f"实跑应当每单元调用一次，实际 {counter.calls}"
+    assert stats.cards == 4 and stats.claims == 6, "桩件口径：2 源 × (2 卡 + 3 条)"
+
+
+def test_main_dry_run_reports_no_llm_calls(tmp_path, capsys):
+    """命令行层同样零调用，并在输出里自报口径，避免下一个人再按「dry-run 省钱」的假设踩坑。"""
+    data_dir, registry, whitelist = make_data_dir(tmp_path, articles=["S001"])
+    db = data_dir / "dry2.db"
+    code = main(cli_args(tmp_path, registry, whitelist, data_dir, db, extra=["--dry-run"]))
+    out = capsys.readouterr().out
+    assert code == 0
+    assert not db.exists(), "dry-run 不得建库"
+    assert "未调用抽取后端" in out, (
+        "dry-run 输出必须写明「不调模型、卡片条目为 0、不是抽取产出」，"
+        "否则读输出的人会把它当成真实抽取结果（规范 4.3 禁止界面显示开启、实际空转）"
+    )
+
+
+# ── T1.5 缺陷三：save_parsed() 必须接进 CLI 正常路径（P2）─────────────────────────────
+def test_ingest_writes_parsed_json_per_source(tmp_path):
+    """解析产物落 `<data_dir>/parsed/<source_id>.json`，且内容可被重新解析（计划阶段一步骤 3）。
+
+    T3/T5 的引文逐字定位与覆盖率口径依赖这份产物；试点那 11 个 JSON 是靠运行期注入既有函数
+    才产出的，磁盘代码一行没改（task0-report §2.4），所以这里必须由正常路径产出。
+    """
+    data_dir, registry, whitelist = make_data_dir(tmp_path, articles=["S101", "S102"], ebooks=["S201"])
+    stats = run_ingest(tmp_path, data_dir, registry, whitelist, ["S101", "S102"], db_name="redtrace.db")
+    assert stats.parsed_units == 2, "先锚定两个已解析单元，否则下面的文件数断言可能是空目录巧合"
+
+    parsed_dir = data_dir / "parsed"
+    produced = sorted(p.name for p in parsed_dir.glob("*.json"))
+    assert produced == ["S101.json", "S102.json"], (
+        f"parsed 产物落点/数量不对：{produced}（应为每个已解析来源一个 <source_id>.json）"
+    )
+    assert not (parsed_dir / "S201.json").exists(), "无原件的来源不得凭空产出解析文件"
+
+    payload = json.loads((parsed_dir / "S101.json").read_text(encoding="utf-8"))
+    assert payload["source_id"] == "S101"
+    first_quote, _second = body_lines("文章S101")
+    assert any(b["text"] == first_quote for b in payload["blocks"]), (
+        "解析产物必须原样保留文本块，否则阶段三逐字比对没有底本"
+    )
+    assert payload["full_text"] == "\n".join(b["text"] for b in payload["blocks"])
+    text = (parsed_dir / "S101.json").read_text(encoding="utf-8")
+    assert "\\u" not in text, "解析产物不得转义中文（规范 6.12 落盘口径：ensure_ascii=False）"
+    assert text.endswith("\n"), "JSON 产物带尾换行，与既有落盘产物一致（规范 6.12）"
+
+    locator = payload["blocks"][0]["locator"]
+    assert locator["paragraph"] == 1 and locator["quote"] == first_quote
+
+
+def test_dry_run_writes_no_parsed_artifacts(tmp_path):
+    """dry-run 连解析产物也不写：它的承诺是「只统计不写任何东西」。"""
+    data_dir, registry, whitelist = make_data_dir(tmp_path, articles=["S101"])
+    stats = run_ingest(tmp_path, data_dir, registry, whitelist, ["S101"], db_name="p.db", dry_run=True)
+    assert stats.parsed_units == 1
+    assert not (data_dir / "parsed").exists(), "dry-run 不得往数据目录写解析产物"
+
+
+def test_main_writes_parsed_into_data_dir(tmp_path, capsys):
+    """走 `main()` 的完整命令行路径也要产出 parsed——这是采编实际用的入口，注入只在测试里有意义。
+
+    `--stub` 指向仓库桩件（只覆盖 S001），所以夹具里的来源编号必须用 S001，
+    否则抽取拿不到产出、卡片为 0，测的就不是「正常路径有产出」这件事了。
+    """
+    data_dir, registry, whitelist = make_data_dir(tmp_path, articles=["S001"])
+    db = data_dir / "cli.db"
+    code = main(cli_args(tmp_path, registry, whitelist, data_dir, db))
+    assert code == 0
+    assert (data_dir / "parsed" / "S001.json").is_file(), (
+        "CLI 正常路径没有调用 save_parsed：跑完全量后 data/parsed/ 仍为空（审查 I5 缺口）"
+    )
 
 
 # ── 命令行输出 ────────────────────────────────────────────────────────────────────────
