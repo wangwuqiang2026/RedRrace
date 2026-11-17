@@ -26,7 +26,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app.core.config import BACKEND_ROOT
+from app.core.config import BACKEND_ROOT, get_config
 from app.db.migrate import migrate
 from app.ingestion.extract import (
     CardDraft,
@@ -375,13 +375,27 @@ def make_extractor(args: argparse.Namespace) -> Extractor:
     return StubExtractor(stub_path)
 
 
+# ── 数据目录默认值（评审 I-1 / 规范 8.7）──────────────────────────────────────────────
+def _default_data_dir() -> Path:
+    """`--data-dir` 省略时的落点：一律 `Config.data_dir`，不在此硬编码 `BACKEND_ROOT / "data"`。
+
+    原先这里是硬编码，与同文件 `--data-dir` 的帮助文本「默认 Config.data_dir」自相矛盾；而本任务
+    刚把 `save_parsed()` 接上，`data/parsed/` 从此是 T3 建索引与 T5 评测要读的**正式输入**。
+    操作者照帮助文本设了 `DATA_DIR` 却忘了 `--data-dir` 时，产物会静默写进另一个目录，下游读到的
+    不是这一批——数字复现不出来（计划 6b-4）。这也是 4.13 的反例：选了哪个目录，操作者无法从
+    配置判断。优先级：显式 `--data-dir` > 环境变量 `DATA_DIR` > `BACKEND_ROOT/data`（最后一档由
+    `config.py:27` 的 BACKEND_ROOT 锚定，保证不随 cwd 漂移，见 `test_config_data_dir_independent_of_cwd`）。
+    """
+    return get_config().data_dir
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if not (args.all or args.source_id):
         print("需要指定 --all 或 --source-id（避免误以为默认就是全量入库）")
         return 2
 
-    data_dir = Path(args.data_dir) if args.data_dir else BACKEND_ROOT / "data"
+    data_dir = Path(args.data_dir) if args.data_dir else _default_data_dir()
     registry = Path(args.registry) if args.registry else data_dir / "来源登记表.csv"
     whitelist = Path(args.whitelist) if args.whitelist else default_whitelist_path()
     db_path = Path(args.db) if args.db else data_dir / "redtrace.db"

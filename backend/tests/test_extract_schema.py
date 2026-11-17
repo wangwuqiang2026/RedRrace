@@ -326,10 +326,11 @@ def test_llm_prompt_is_pinned_to_verbatim_quotes(monkeypatch):
 
 
 # ── T1.5 缺陷一：请求体必须真的带上 enable_thinking（P0，决策记录 007 第五节）──────────
-# 配置字段名 → 对应环境变量名（规范 4.1 要求报错点名环境变量；这里用同一份映射造配置值，
-# 不另抄一遍字符串，避免两处清单漂移）。测试会话由 conftest 的 isolate_dotenv 屏蔽本机
-# `.env`，宿主环境也可能残留 LLM_*，所以一律把值**显式传给 Config**，不靠 setenv。
-LLM_KEY_ENV = {
+# LLM 相关配置字段名 → **固定测试值**。不是环境变量名单（评审 M-1：原名 `LLM_KEY_ENV` 与注释
+# 都误导后来者以为在维护 env 清单）：测试会话由 conftest 的 `isolate_dotenv` 屏蔽本机 `.env`，
+# 宿主环境又可能残留 LLM_*，所以一律把值**显式传给 Config**，不靠 setenv；`llm_enable_thinking`
+# 也不在这里——它的取值本身就是被测对象，由 `llm_config()` 单独给默认并允许覆盖。
+LLM_TEST_VALUES = {
     "llm_api_key": "sk-test",
     "llm_base_url": "https://example.invalid/v1",
     "llm_model": "m",
@@ -344,7 +345,7 @@ def llm_config(**over):
     """
     from app.core.config import Config
 
-    wanted = dict(LLM_KEY_ENV)
+    wanted = dict(LLM_TEST_VALUES)
     wanted["llm_enable_thinking"] = False
     unknown = set(wanted) - set(Config.model_fields)
     assert not unknown, f"Config 里已不存在这些字段，测试要同步改名：{sorted(unknown)}"
@@ -353,19 +354,25 @@ def llm_config(**over):
 
 
 class CapturedPost:
-    """替身：记下请求体与 timeout 并返回可编排的响应内容，绝不联网（规范 5.17）。
+    """替身：记下请求体、timeout、端点与鉴权头，返回可编排的响应内容，绝不联网（规范 5.17）。
 
     `content` 是模型回复正文（默认一张空 cards），P6 的用例改它来喂不同响应形态。
+    `url` / `headers` 也一并记录（评审 M-2）：端点拼错或 Authorization 丢失会让真实调用 404/401，
+    但只看请求体的用例照样绿——那是 5.8 说的"断言没打在该规则独有的那一面"。
     """
 
     def __init__(self):
         self.bodies = []
         self.timeouts = []
+        self.urls = []
+        self.headers = []
         self.content = json.dumps({"cards": []})
 
     def __call__(self, url, **kwargs):
         self.bodies.append(kwargs["json"])
         self.timeouts.append(kwargs.get("timeout"))
+        self.urls.append(url)
+        self.headers.append(kwargs.get("headers") or {})
         payload = {"choices": [{"message": {"content": self.content}}]}
         return httpx.Response(200, json=payload, request=httpx.Request("POST", url))
 
@@ -494,6 +501,24 @@ def test_malformed_shapes_keep_existing_error_and_retry(capture_post, content):
     raw, error = _extract_with_retries(doc, source, failing)
     assert raw == [] and error is not None, f"畸形形态 {content!r} 不得被当成有效产出"
     assert len(capture_post.bodies) == MAX_ATTEMPTS, "仍按既有口径重试到上限后转人工补录"
+
+
+def test_llm_request_targets_chat_completions_with_bearer_token(capture_post):
+    """端点与鉴权头也是被测对象（评审 M-2，规范 5.8「断言要打在该规则独有的一面」）。
+
+    只看请求体的话，`/chat/completions` 被改成别的路径、或 `Authorization` 头丢失，测试照样绿，
+    而真实调用会 404 / 401——那又是一次"磁盘代码坏着、跑起来才发现"的复现事故。
+    """
+    doc, source = fixture_doc(), fixture_source()
+    LlmExtractor(config=llm_config()).extract(doc, source)
+    assert capture_post.urls == ["https://example.invalid/v1/chat/completions"], (
+        f"实际请求 URL={capture_post.urls}：端点由 llm_base_url 拼 /chat/completions，"
+        "改名或漏拼都会让线上 404，而请求体层面的用例拦不住"
+    )
+    auth = capture_post.headers[0].get("Authorization")
+    assert auth == "Bearer sk-test", (
+        f"实际 Authorization={auth!r}：缺 Bearer 前缀或漏传 key，服务端直接 401"
+    )
 
 
 # ── 审查 I3：引文匹配的口径与命中块归属 ──────────────────────────────────────────────

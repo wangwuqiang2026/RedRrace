@@ -447,6 +447,43 @@ def test_main_writes_parsed_into_data_dir(tmp_path, capsys):
     )
 
 
+# ── 修复轮 I-1：不给 --data-dir 时，默认落点必须回落 Config.data_dir（规范 8.7）─────────
+def test_main_without_data_dir_follows_DATA_DIR_env(tmp_path, monkeypatch, capsys):
+    """`DATA_DIR` 设了却没给 `--data-dir`：整条链必须跟着 `DATA_DIR` 走。
+
+    危害（评审 I-1）：本任务刚把 `save_parsed()` 接上，`data/parsed/` 从此是 T3 建索引与
+    T5 评测要读的**正式输入**。操作者照 `--help` 的「默认 Config.data_dir」设了 `DATA_DIR`
+    却忘了 `--data-dir`，旧实现会硬编码落 `BACKEND_ROOT / "data"`（8.7 点名禁止的形态），
+    产物就写进另一个目录，下游读到的不是这批——数字复现不出来（计划 6b-4）。
+    同时这也是 4.13 的反例：选了哪个目录，操作者无法从配置判断。
+
+    登记表与白名单**故意不给参数**，让它们也走各自的默认派生链（`cli.py` 里两者都由
+    `data_dir` 拼出来），这样"DATA_DIR 没接上"必然表现为找不到原件或产物不落此处。
+    """
+    data_dir, _registry, _whitelist = make_data_dir(tmp_path / "env", articles=["S001"])
+    argv = ["--all", "--stub", str(STUB_FILE)]
+    monkeypatch.setenv("DATA_DIR", str(data_dir))
+    assert main(argv) == 0
+    out = capsys.readouterr().out
+    assert "已可解析单元: 1" in out, f"没读到 DATA_DIR 下的语料，命令行输出：{out}"
+    assert (data_dir / "parsed" / "S001.json").is_file(), (
+        "DATA_DIR 未生效：parsed 产物没落在环境变量指定的数据目录，"
+        "说明 cli 的默认值仍是硬编码 backend/data（规范 8.7、评审 I-1）"
+    )
+    assert (data_dir / "redtrace.db").is_file(), "库文件同样要跟 DATA_DIR，否则与产物分家"
+
+
+def test_explicit_data_dir_beats_DATA_DIR_env(tmp_path, monkeypatch):
+    """显式参数优先于环境变量：否则 --data-dir 会被静默覆盖，两个来源又打起来了。"""
+    data_dir, registry, whitelist = make_data_dir(tmp_path, articles=["S001"])
+    db = data_dir / "explicit.db"
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "should-not-be-used"))
+    argv = cli_args(tmp_path, registry, whitelist, data_dir, db)
+    assert main(argv) == 0
+    assert (data_dir / "parsed" / "S001.json").is_file()
+    assert not (tmp_path / "should-not-be-used").exists(), "--data-dir 给了之后不该按 DATA_DIR 建目录"
+
+
 # ── 命令行输出 ────────────────────────────────────────────────────────────────────────
 def cli_args(tmp_path, registry, whitelist, data_dir, db, extra=()):
     return [
