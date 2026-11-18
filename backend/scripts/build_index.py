@@ -32,6 +32,7 @@ from app.core.config import Config, get_config
 from app.db.migrate import default_db_path
 from app.retrieval.errors import EmbeddingResponseError
 from app.retrieval.local import META_FILENAME, LocalBackend, default_index_dir
+from app.retrieval.rerank import describe as describe_reranker
 
 THRESHOLD_FILENAME = "threshold.json"
 
@@ -60,6 +61,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="检索串最小字符数，短于此的块被拦下（默认 10，见 task0-report 6.4-3）",
     )
+    parser.add_argument(
+        "--rerank-backend",
+        choices=["api", "local_lexical", "off"],
+        default="off",
+        help="重排档（默认 off：建索引不预置重排，T5 标定时在 Python 侧显式注入）",
+    )
     parser.add_argument("--rebuild", action="store_true", help="强制全量重建；不带则复用现有索引")
     return parser
 
@@ -72,6 +79,23 @@ def _describe_embedding(config: Config) -> str:
         f"text_type={config.embedding_text_type_document or '<未声明>'}"
         f"/{config.embedding_text_type_query or '<未声明>'}"
     )
+
+
+def _build_reranker(backend: str, config: Config):
+    """按显式档位构造重排器；`off` 返回 None。
+
+    API 档缺配置时**不让建索引失败**：重排是可选增强，缺 key 属可回退情形（4.3）。
+    但也绝不静默：打印一行说明，并让自检输出如实反映「这一档没生效」。
+    """
+    if backend == "off":
+        return None
+    try:
+        from app.retrieval.rerank import build_reranker
+
+        return build_reranker(config.model_copy(update={"rerank_backend": backend}))
+    except RuntimeError as exc:
+        print(f"重排档={backend} 不可用，本轮自检按未接入处理：{exc}")
+        return None
 
 
 def _threshold_note(index_dir: Path) -> str:
@@ -104,6 +128,9 @@ def main(argv: list[str] | None = None) -> int:
         "index_dir": index_dir,
         "block_mode": args.block_mode,
     }
+    reranker = _build_reranker(args.rerank_backend, config)
+    if reranker is not None:
+        kwargs["reranker"] = reranker
     if aliases_path is not None:
         kwargs["aliases_path"] = aliases_path
     if min_chars is not None:
@@ -156,8 +183,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"语料指纹 {report.corpus_fingerprint}")
     signature = report.vector_signature or {}
     print(f"向量配置签名 {signature.get('digest', '<未写>')}（{signature}）")
-    # ④ 重排档可用性（T4 才接入，现在照实说没接入）
-    print(f"重排档=未接入（T4 接入后此处显示 api/local_lexical/off 实际状态）：{backend.rerank_note()}")
+    # ④ 重排档可用性（T4 起由 `--rerank-backend` 显式选档；默认 off 照实说没接入）
+    print(f"重排档={describe_reranker(backend.reranker)}：{backend.rerank_note()}")
     # ⑤⑥ 阈值文件与切块档
     print(_threshold_note(index_dir))
     print(f"切块档={report.block_mode} 最小检索串长度={report.min_search_text_chars}")

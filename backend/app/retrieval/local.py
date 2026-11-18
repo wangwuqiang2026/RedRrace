@@ -38,6 +38,9 @@ from app.db.migrate import default_db_path
 from app.retrieval.backend import Hit, IndexStats, SearchBackend
 from app.retrieval.embedding import build_embedder, cosine, estimate_tokens
 from app.retrieval.errors import EmbeddingResponseError
+from app.retrieval.rerank import apply_rerank
+from app.retrieval.rerank import describe as describe_reranker
+from app.retrieval.search import fuse
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +327,7 @@ class LocalBackend(SearchBackend):
         block_mode: str = "single",
         min_search_text_chars: int = DEFAULT_MIN_SEARCH_TEXT_CHARS,
         probe_query: str = DEFAULT_PROBE_QUERY,
+        reranker: Any | None = None,
     ) -> None:
         if block_mode not in BLOCK_MODES:
             raise ValueError(
@@ -346,6 +350,10 @@ class LocalBackend(SearchBackend):
         self.block_mode = block_mode
         self.min_search_text_chars = min_search_text_chars
         self.probe_query = probe_query
+        # 重排器同样是注入点（依 4.13）：不传 = 本层不重排（等价 off），由上层 CLI / 标定脚本
+        # 用 `build_reranker(config)` 显式选档后注入。缺 key 时 `ApiReranker.__init__` 自己大声报错，
+        # 本类不接手、不换档、不把「没重排」伪装成「重排生效」（4.1、4.3）。
+        self.reranker = reranker
 
         self._docs: list[IndexedDoc] = []
         self._bm25: Any | None = None
@@ -370,8 +378,13 @@ class LocalBackend(SearchBackend):
         return ensure_user_dict(self.aliases_path).user_dict_terms
 
     def rerank_note(self) -> str:
-        """重排档的实际可用性（brief 第④项：未接入要打印「未接入」，不得留空冒充正常，依 4.3）。"""
-        return LOCAL_LEXICAL_RERANK_NOTE
+        """重排档的实际可用性（brief 第④项：未接入要打印「未接入」，不得留空冒充正常，依 4.3）。
+
+        T4 起：注入了重排器就报它的档名；没注入仍是「未接入」+ 原因（T3 阶段既有断言依赖这条）。
+        """
+        if self.reranker is None:
+            return LOCAL_LEXICAL_RERANK_NOTE
+        return f"重排档={describe_reranker(self.reranker)}"
 
     def documents(self) -> list[dict[str, Any]]:
         """索引内的检索块（含定位反查所需字段），供自检与评测脚本核对「条目是否真进了索引」。"""
@@ -475,25 +488,33 @@ class LocalBackend(SearchBackend):
         self.ensure_ready()
         _validate_k(k)
         text = self._require_query(query)
-        merged: OrderedDict[int, Hit] = OrderedDict()
         dense = self._dense_rank(text, limit=self.cfg.retrieval_dense_top_k)
         sparse = self._sparse_rank(text, limit=self.cfg.retrieval_sparse_top_k)
-        for hit in dense + sparse:
-            previous = merged.get(hit.claim_id)
-            if previous is None:
-                merged[hit.claim_id] = hit
-                continue
-            # 同一条目两路都召回：保留各自的分数列，综合分以稠密为准（依 4.6 尺子唯一）。
-            if previous.dense_score is None and hit.dense_score is not None:
-                previous.dense_score = hit.dense_score
-                previous.score = hit.score
-            if previous.sparse_score is None and hit.sparse_score is not None:
-                previous.sparse_score = hit.sparse_score
-        ranked = sorted(
-            merged.values(),
-            key=lambda h: (h.score is None, -(h.score or 0.0), -(h.sparse_score or 0.0), h.doc_order),
+        # 融合规则统一在 `search.fuse`（RRF + 稀疏名额 k//2 + 稳定序），本层只提供两路候选。
+        fused = fuse(
+            dense,
+            sparse,
+            k=k,
+            rrf_constant=self.cfg.retrieval_rrf_constant,
         )
-        return ranked[:k]
+        if not rerank or self.reranker is None:
+            return fused
+        # 重排只写 `Hit.rerank_score` 并据此重排，`Hit.score` 一个字节都不动（4.6）；
+        # 失败时 `apply_rerank` 内部已打印「重排未生效: 原因」并按融合顺序返回（4.3）。
+        return apply_rerank(
+            fused,
+            text,
+            self.reranker,
+            text_of=self._text_for_claim,
+            max_docs=self.cfg.rerank_max_docs,
+        )
+
+    def _text_for_claim(self, hit: Hit) -> str:
+        """按候选回捞索引正文（重排需要原文，不能只给编号）。"""
+        for doc in self._docs:
+            if hit.claim_id in doc.claim_ids:
+                return doc.text
+        return ""
 
     def search_bm25_only(self, query: str, k: int, *, claim_ids: Iterable[int] | None = None) -> list[Hit]:
         """只开稀疏的自检通道（步骤 3b 逐字形态）：`dense_score` / `score` 恒为 `None`（依 4.7）。
