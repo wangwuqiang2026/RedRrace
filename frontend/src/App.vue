@@ -1,13 +1,36 @@
 <script setup lang="ts">
 // App 壳：顶栏（站点标识 + 七页导航）→ 主内容 → 页脚（合规摘要）。
-// 依据 docs/设计规范.md §5 通用结构：顶栏标识定稿 = RedTrace + 中文副题（与选题书标题逐字一致），
-// 顶栏高 56px，深红仅用于 logo 块与当前导航项标识条（3px 下划线 + 字重 500，不单靠颜色）。
+// 深色玻璃态改造：导航项依次浮入由 GSAP 工厂驱动，motionContext 统一管理，测试环境自动降级为 null。
+// 结构契约（skip-link / header.site-header / main#main / footer.site-footer / RouterLink v-for）保持不变。
+import { onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { routes } from './router'
+import { createStagger, motionContext } from './lib/motion'
 
 const navItems = routes.flatMap((r) =>
   r.meta?.nav ? [{ path: r.path, label: String(r.meta.nav) }] : [],
 )
+
+const navRef = ref<HTMLElement | null>(null)
+let ctx: ReturnType<typeof motionContext> = null
+
+onMounted(() => {
+  const nav = navRef.value
+  if (!nav) return
+  ctx = motionContext(nav)
+  if (!ctx) return
+  const links = Array.from(nav.querySelectorAll('a'))
+  if (links.length) {
+    ctx.add(() => {
+      createStagger(links, { y: 16, stagger: 0.06 })
+    })
+  }
+})
+
+onUnmounted(() => {
+  ctx?.revert()
+  ctx = null
+})
 </script>
 
 <template>
@@ -17,7 +40,7 @@ const navItems = routes.flatMap((r) =>
       <span class="brand-name">RedTrace</span>
       <span class="brand-sub">红色文化知识库与可溯源问答系统</span>
     </div>
-    <nav class="site-nav" aria-label="主导航">
+    <nav ref="navRef" class="site-nav" aria-label="主导航">
       <RouterLink v-for="item in navItems" :key="item.path" :to="item.path">
         {{ item.label }}
       </RouterLink>
@@ -39,13 +62,15 @@ const navItems = routes.flatMap((r) =>
   position: sticky;
   top: 0;
   z-index: var(--z-header);
-  height: var(--header-height);
+  min-height: var(--header-height);
   display: flex;
   align-items: center;
   gap: var(--space-6);
   padding: 0 var(--space-6);
-  background: var(--paper-card);
-  border-bottom: 1px solid var(--line-border);
+  background: var(--dm-bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--dm-line);
 }
 .brand {
   display: flex;
@@ -54,60 +79,91 @@ const navItems = routes.flatMap((r) =>
   flex-shrink: 0;
 }
 .brand-name {
-  background: var(--brand-red);
-  color: var(--ink-inverse);
+  background: linear-gradient(135deg, var(--dm-red), var(--dm-red-dim));
+  color: var(--dm-ink);
+  font-family: var(--dm-font-display);
   font-weight: var(--fw-bold);
   font-size: var(--text-h2);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-1);
+  text-shadow: 0 0 12px var(--dm-glow-red);
+  box-shadow: 0 0 16px var(--dm-glow-red);
 }
 .brand-sub {
-  color: var(--cite-grey);
+  color: var(--dm-ink-dim);
   font-size: var(--text-meta);
 }
 .site-nav {
   display: flex;
   gap: var(--space-4);
   overflow-x: auto;
+  scrollbar-width: none;
+}
+.site-nav::-webkit-scrollbar {
+  display: none;
 }
 .site-nav a {
-  color: var(--ink);
+  color: var(--dm-ink-dim);
   text-decoration: none;
   font-size: var(--text-meta);
   padding: var(--space-2) 0;
   white-space: nowrap;
+  transition: color 0.25s ease, box-shadow 0.25s ease;
 }
 .site-nav a:hover {
-  text-decoration: underline;
+  color: var(--dm-ink);
 }
-/* 当前导航项：深红下划线 + 字重 500 + aria-current（R4 三通道） */
+/* 当前导航项：朱砂红底部光条 + 字重 500 + aria-current（不单靠颜色） */
 .site-nav a[aria-current='page'] {
+  color: var(--dm-ink);
   font-weight: var(--fw-medium);
-  box-shadow: inset 0 -3px 0 var(--brand-red);
+  box-shadow: inset 0 -3px 0 var(--dm-red);
 }
 main {
   max-width: var(--container-width);
   margin: 0 auto;
   padding: var(--space-6);
   min-height: 60vh;
+  color: var(--dm-ink);
 }
 .site-footer {
   max-width: var(--container-width);
   margin: 0 auto;
   padding: var(--space-6);
-  border-top: 1px solid var(--line-border);
-  color: var(--cite-grey);
+  border-top: 1px solid var(--dm-line);
+  color: var(--dm-ink-dim);
   font-size: var(--text-meta);
   line-height: var(--line-height-meta);
+}
+
+@media (max-width: 1023px) {
+  .site-header {
+    gap: var(--space-4);
+    padding: 0 var(--space-4);
+  }
+  .brand-sub {
+    display: none;
+  }
 }
 @media (max-width: 767px) {
   .site-header {
     flex-wrap: wrap;
     height: auto;
+    gap: var(--space-2);
     padding: var(--space-2) var(--space-4);
   }
-  .brand-sub {
-    display: none;
+  .brand-name {
+    font-size: var(--text-body);
+  }
+  .site-nav {
+    width: 100%;
+    gap: var(--space-3);
+  }
+  main {
+    padding: var(--space-4);
+  }
+  .site-footer {
+    padding: var(--space-4);
   }
 }
 </style>

@@ -1,4 +1,4 @@
-/* 全局基础样式：只引用 tokens，不出现任何硬编码色值（style-hardcode 测试扫描本文件）。 */
+/* 全局基础样式：深色主题基底，只引用 tokens，不出现任何硬编码色值（style-hardcode 测试扫描本文件）。 */
 *,
 *::before,
 *::after {
@@ -7,12 +7,13 @@
 
 html {
   scroll-padding-top: calc(var(--header-height) + var(--space-4));
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  background: var(--paper-page);
-  color: var(--ink);
+  background: var(--dm-bg);
+  color: var(--dm-ink);
   font-family: var(--font-sans);
   font-size: var(--text-body);
   line-height: var(--line-height-body);
@@ -25,7 +26,7 @@ h1, h2, h3 {
 }
 
 a {
-  color: var(--link-blue);
+  color: var(--dm-red);
 }
 
 /* 焦点可见（§6.1）：禁止 outline:none */
@@ -40,8 +41,8 @@ a {
   left: 0;
   top: 0;
   transform: translateY(-200%);
-  background: var(--paper-card);
-  color: var(--link-blue);
+  background: var(--dm-bg-elev);
+  color: var(--dm-ink);
   padding: var(--space-2) var(--space-4);
   z-index: var(--z-toast);
 }
@@ -59,13 +60,35 @@ a {
   overflow-wrap: anywhere;
 }
 
-/* 减弱动效（§6.4/§7） */
+/* 自定义滚动条：深色轨道 + 朱砂红滑块 */
+* {
+  scrollbar-color: var(--dm-red-dim) var(--dm-bg-elev);
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--dm-bg-elev);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--dm-red-dim);
+  border-radius: var(--dm-radius);
+}
+
+/* 选中文本：红底浅字 */
+::selection {
+  background: var(--dm-red);
+  color: var(--dm-ink);
+}
+
+/* 减弱动效（§6.4/§7）：motion.css 亦有全局兜底，此处双保险 */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    transition-duration: 0ms !important;
-    animation-duration: 0ms !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
   }
