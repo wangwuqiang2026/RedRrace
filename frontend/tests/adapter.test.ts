@@ -70,8 +70,8 @@ describe('S4 适配层：契约 → props 模型', () => {
 
   it('ConflictItem.sides 乱序输入 → 模型恒为 source_id 升序（lead 裁决 5 的适配层镜像）', () => {
     const sides: Citation[] = [
-      { index: 2, claim: 'B', locator: loc, source: { ...book, source_id: 'S031' } },
-      { index: 1, claim: 'A', locator: loc, source: { ...book, source_id: 'S012' } },
+      { index: 2, claim: 'B', locator: loc, source: { ...book, source_id: 'S031' }, verified: true },
+      { index: 1, claim: 'A', locator: loc, source: { ...book, source_id: 'S012' }, verified: true },
     ]
     const c: ConflictItem = { subject: '某事件', predicate: '参加人数', sides }
     const m = toConflictModel(c)
@@ -83,23 +83,23 @@ describe('S4 适配层：契约 → props 模型', () => {
   // 让「三个来源打架」这种真情况永远看不见。
   it('J-1：sides 恰好三条 → 必须抛错，绝不返回两张卡', () => {
     const sides: Citation[] = [
-      { index: 1, claim: 'A', locator: loc, source: { ...book, source_id: 'S001' } },
-      { index: 2, claim: 'B', locator: loc, source: { ...book, source_id: 'S002' } },
-      { index: 3, claim: 'C', locator: loc, source: { ...book, source_id: 'S003' } },
+      { index: 1, claim: 'A', locator: loc, source: { ...book, source_id: 'S001' }, verified: true },
+      { index: 2, claim: 'B', locator: loc, source: { ...book, source_id: 'S002' }, verified: true },
+      { index: 3, claim: 'C', locator: loc, source: { ...book, source_id: 'S003' }, verified: true },
     ]
     expect(() => toConflictModel({ subject: 'S', predicate: 'P', sides })).toThrow(/恰好两条/)
   })
 
   it('J-1：sides 一条 → 同样抛错（双向锁死，不是只防 >2）', () => {
     const sides: Citation[] = [
-      { index: 1, claim: 'A', locator: loc, source: { ...book, source_id: 'S001' } },
+      { index: 1, claim: 'A', locator: loc, source: { ...book, source_id: 'S001' }, verified: true },
     ]
     expect(() => toConflictModel({ subject: 'S', predicate: 'P', sides })).toThrow(/恰好两条/)
   })
 
   // N-3（review-F2）：契约级排序必须是 Unicode 码点序（与后端 Python sorted() 同序）。
   it('N-3：卡序=码点序而非 localeCompare（判别对 S-1/S_1，两序不同）', () => {
-    const mk = (id: string): Citation => ({ index: 1, claim: id, locator: loc, source: { ...book, source_id: id } })
+    const mk = (id: string): Citation => ({ index: 1, claim: id, locator: loc, source: { ...book, source_id: id }, verified: true })
     // 判别力前提：若 localeCompare 与码点序一致，本用例就空转——先锁死分歧的存在
     expect('S-1'.localeCompare('S_1'), 'localeCompare 与码点序对判别对必须不同序').toBeGreaterThan(0)
     const m = toConflictModel({ subject: 'S', predicate: 'P', sides: [mk('S_1'), mk('S-1')] })

@@ -18,14 +18,17 @@
 import type { RefusalReason, SourceCardModel } from '../api/model'
 import SourceCard from './SourceCard.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   reason: RefusalReason // N-6：单一来源类型（model.ts），契约加拒答值只改一处
   /** 已登记来源单元数；真实模式暂无契约来源时传 null——宁可少说一句，不许说错（J-2，§8 数字由后端注入禁写死） */
   sourceCount: number | null
   references: SourceCardModel[]
   /** 必须是 answer.suggestions 契约字段的内容（J-2）；提问区的静态示例入口不在此列 */
   suggestions: string[]
-}>()
+  /** 闸门可解释说明（阶段三 5b-4）：「当前最高匹配 x，低于工作阈值 y」。独立一行，不混入封闭集句子。
+   *  默认空串：阶段零F 的版式测试不传该字段也应渲染（契约可加不可改，新增字段不破坏既有调用方）。 */
+  gateNote?: string
+}>(), { gateNote: '' })
 
 const emit = defineEmits<{ (e: 'suggest', question: string): void }>()
 
@@ -64,6 +67,7 @@ const body = () => {
       {{ head() }}
     </p>
     <p class="refusal-body">{{ body() }}</p>
+    <p v-if="gateNote" class="refusal-gate-note" data-test="gate-note">{{ gateNote }}</p>
 
     <div class="refusal-try">
       <p class="try-label">您可以试试</p>
@@ -111,6 +115,11 @@ const body = () => {
   margin: 0;
   font-size: var(--text-body);
   line-height: var(--line-height-body);
+}
+.refusal-gate-note {
+  margin: 0;
+  font-size: var(--text-meta);
+  color: var(--cite-grey);
 }
 .try-label {
   margin: 0 0 var(--space-2);

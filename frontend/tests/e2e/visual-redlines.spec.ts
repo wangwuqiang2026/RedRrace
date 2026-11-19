@@ -1,6 +1,23 @@
 // S8 e2e：C1/C3 红线 computed style 实测 + 768px 堆叠 + 无障碍基线。
 // 断言写法照 docs/视觉验收-阶段零F.md §1.2 伪代码（visual-qa V1-a），不另起判定。
+// 阶段三步骤 8 问答页去 mock 后，红线测试用 page.route 注入契约样例响应（只作测试夹具，
+// 生产入口无 mock 分支）——分发规则与原 mockAsk 一致，保证既有版式断言语义不变。
 import { test, expect } from '@playwright/test'
+import {
+  ANSWER_OK, ANSWER_CONFLICT, ANSWER_REFUSED, ANSWER_REFUSED_NO_EVIDENCE,
+} from '../../src/api/mock/scenarios'
+
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/ask', async (route) => {
+    const question = String((route.request().postDataJSON() as { question?: string }).question ?? '')
+    const payload =
+      question.includes('可用记载') ? ANSWER_REFUSED_NO_EVIDENCE
+        : question.includes('不同记载') || question.includes('人数') ? ANSWER_CONFLICT
+          : question.includes('郴州') || question.includes('数据库') ? ANSWER_OK
+            : ANSWER_REFUSED
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) })
+  })
+})
 
 async function goConflict(page: import('@playwright/test').Page) {
   await page.goto('/ask')
@@ -95,7 +112,15 @@ test('B5【红线】拒答区：底色=--paper-muted 解析值、文字=--refusa
   await expect(zone.locator('[role=alert]')).toHaveCount(0)
   await expect(zone.locator('svg[data-icon=alert-triangle], svg[data-icon=x-circle]')).toHaveCount(0)
   expect(await zone.innerText()).not.toMatch(/错误|失败|异常|无法处理|出错/)
-  expect(await zone.innerText()).toContain('仅参考，不构成对该问题的回答')
+  // 阶段三去 mock 后真接口暂无带出处的参考卡（suggestions 仍是文本数组，阶段四升级），
+  // 免责句为条件渲染：有参考卡才出现。原 mock 夹具带 3 张卡，故原断言无条件要求它。
+  const refs = zone.locator('.refusal-refs .source-card')
+  if (await refs.count() > 0) {
+    expect(await zone.innerText()).toContain('仅参考，不构成对该问题的回答')
+  } else {
+    // 无参考卡时免责句也不得出现（条件渲染，不能留一句指向空列表的悬空说明）
+    expect(await zone.innerText()).not.toContain('仅参考，不构成对该问题的回答')
+  }
 })
 
 test('D4 封闭集 e2e：no_evidence 场景两类句子不互换、无错误红（compliance-docs 实测缺口补测）', async ({ page }) => {

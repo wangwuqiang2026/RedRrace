@@ -15,7 +15,7 @@ export interface paths {
         put?: never;
         /**
          * Ask
-         * @description `POST /api/ask` 占位：契约已定，实现落在阶段三。
+         * @description `POST /api/ask`：跑完整流水线（检索 → 证据 → 生成 → 校验 → 出处）。
          */
         post: operations["ask_api_ask_post"];
         delete?: never;
@@ -61,7 +61,7 @@ export interface components {
             /** Refusal */
             refusal: boolean;
             /** Refusal Reason */
-            refusal_reason?: ("not_covered" | "no_evidence") | null;
+            refusal_reason?: ("not_covered" | "no_evidence" | "all_claims_rejected") | null;
             /** Answer */
             answer: string;
             /** Citations */
@@ -72,10 +72,28 @@ export interface components {
             suggestions: string[];
             /** Elapsed Ms */
             elapsed_ms: number;
+            /**
+             * Retrieved Count
+             * @default 0
+             */
+            retrieved_count: number;
+            /** Top Score */
+            top_score?: number | null;
+            /** Threshold */
+            threshold?: number | null;
+            /**
+             * Gate Note
+             * @default
+             */
+            gate_note: string;
         };
         /**
          * AskRequest
          * @description 提问请求：问题、召回条数、身份（plan 阶段一/三「接口约定」）。
+         *
+         *     阶段三新增 `source_ids` / `media_types`（可选来源范围）。**空范围的语义是「不限制」而不是
+         *     「查不到」**（步骤 3b-1）：把空选择当成「搜 0 个来源」会让系统用「知识库没有依据」
+         *     回答一个根本没检索的问题。判定收在 `qa.constants.is_unrestricted()`，测试与流水线共用。
          */
         AskRequest: {
             /** Question */
@@ -91,10 +109,17 @@ export interface components {
              * @enum {string}
              */
             role: "学生" | "教师" | "馆员";
+            /** Source Ids */
+            source_ids?: string[];
+            /** Media Types */
+            media_types?: string[];
         };
         /**
          * Citation
          * @description 一条带出处的引用：编号 + 断言 + 定位 + 来源。
+         *
+         *     `verified` 默认 False（阶段三步骤 1）：未经三层校验的引用不得默认显示「已通过」。
+         *     校验通过后由 `citation.verify_answer()` 回填 True；前端据此决定是否渲染引用标记。
          */
         Citation: {
             /** Index */
@@ -103,6 +128,11 @@ export interface components {
             claim: string;
             locator: components["schemas"]["Locator"];
             source: components["schemas"]["SourceOut"];
+            /**
+             * Verified
+             * @default false
+             */
+            verified: boolean;
         };
         /**
          * ConflictItem

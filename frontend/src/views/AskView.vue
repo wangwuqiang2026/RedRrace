@@ -1,20 +1,16 @@
 <script setup lang="ts">
-// AskView —— 问答页骨架（简报 S6）：提问区 → 答案区（句末上标）→ 冲突区 → 出处区 ｜ 拒答区互斥。
-// 双模式：VITE_USE_MOCK=1 走本地契约样例；=0 走真接口（src/api/client.ts）。
-// 纪律：本阶段无任何检索/生成逻辑；mock 文案全部标注「契约样例」，禁止假回答观感（简报 S9 演示话术）。
+// AskView —— 问答页（阶段三步骤 8：去 mock，接真接口）：提问区 → 答案区（句末上标）→ 冲突区 → 出处区 ｜ 拒答区互斥。
+// 本页只走 `POST /api/ask` 真接口（src/api/client.ts）；mock 夹具只留在 tests 与 src/api/mock
+// 供组件版式测试使用，生产入口不再有 VITE_USE_MOCK 分支。
 // 组件只吃前端模型（src/api/model.ts）；后端字段名一律经 src/api/adapter.ts（lead 约束）。
 import { ref, computed } from 'vue'
 import type { AnswerModel } from '../api/model'
-import { toAnswerModel, toSourceCardModel } from '../api/adapter'
-import { mockAsk, SAMPLE_QUESTIONS } from '../api/mock/scenarios'
-import { SAMPLE_SOURCES } from '../api/mock/sources'
+import { SAMPLE_QUESTIONS } from '../api/mock/scenarios'
 import { askApi } from '../api/client'
 import SourceCard from '../components/SourceCard.vue'
 import ConflictPair from '../components/ConflictPair.vue'
 import CitationMark from '../components/CitationMark.vue'
 import RefusalNotice from '../components/RefusalNotice.vue'
-
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === '1'
 
 const question = ref('')
 const answer = ref<AnswerModel | null>(null)
@@ -27,8 +23,8 @@ async function ask(q: string): Promise<void> {
   loading.value = true
   techError.value = null
   try {
-    // mock 与真接口都产出 AnswerOut 形状 → 同一适配路径（真实联调等阶段三，/api/ask 现为 501 占位）
-    answer.value = USE_MOCK ? toAnswerModel(mockAsk(q)) : await askApi(q)
+    // 真接口返回 AnswerOut → 由 askApi 内部经 adapter.toAnswerModel 归一（本页不碰后端字段名）。
+    answer.value = await askApi(q)
   } catch (e) {
     answer.value = null
     // 技术故障态：红色 + ⊗ + 重试（与内容拒答严格分版式，§5.4）
@@ -56,29 +52,19 @@ function citationFor(index: number) {
   return answer.value?.citations.find((c) => c.index === index) ?? null
 }
 
-// 拒答参考卡：mock 模式取登记表样例前 3 条；
-// 真接口的「最近邻参考」清单来源未定（AnswerOut.suggestions 现仅文本数组，撑不住带出处的参考项）。
-// lead 2026-11-13 口径：阶段三契约定稿会加 reference_cards: list[Citation] 或把 suggestions
-// 升级为对象数组——**字段没定下来之前，前端不得自造字段名去猜**（不可变契约第 3 条要求
-// 参考项同样带出处）。本文件与 mock/scenarios.ts 均不加任何未登记的契约字段。
-const refusalReferences = computed(() =>
-  USE_MOCK ? SAMPLE_SOURCES.slice(0, 3).map((s) => toSourceCardModel(s)) : [],
-)
-// J-2：拒答区 chips 一律消费契约字段 answer.suggestions（mock 模式由 scenarios 以同字段供数）；
-// 提问区示例入口（SAMPLE_QUESTIONS）是前端静态 UI 引导，两处数据源不同，不混用。
-// 注册来源数：mock=样例数；真实模式暂无契约来源 → null，RefusalNotice 自动改用无数字文案
-//（§8 数字由后端注入、前端禁写死；宁可少说一句，不许说错）。
-const registeredCount = computed<number | null>(() => (USE_MOCK ? SAMPLE_SOURCES.length : null))
+// 拒答参考卡：真接口当前只给文本 suggestions，尚不带出处卡（阶段三契约未加 reference_cards），
+// 故前端不自造字段名、不拿 mock 样例冒充真实参考卡 —— 返回空数组（RefusalNotice 自动隐藏参考区）。
+// J-2：拒答区 chips 一律消费契约字段 answer.suggestions；提问区示例入口（SAMPLE_QUESTIONS）
+// 是前端静态 UI 引导，两处数据源不同，不混用。
+// 注册来源数：真接口暂无该契约字段 → null，RefusalNotice 自动改用无数字文案（§8 数字由后端注入）。
+const refusalReferences = computed(() => [] as import('../api/model').SourceCardModel[])
+const registeredCount = computed<number | null>(() => null)
 
 // 超时降级说明条（在线 15s/本地 30s，lead 裁决定值）在阶段三接流水线时实现；壳阶段不做假计时。
 </script>
 
 <template>
   <div class="ask-page">
-    <p v-if="USE_MOCK" class="mock-banner" role="note">
-      数据为契约样例，真实回答在阶段三接入——本页演示的是版式与信息层级，不是问答能力。
-    </p>
-
     <form class="ask-form" @submit.prevent="ask(question)">
       <label class="visually-hidden" for="ask-input">提问</label>
       <input
@@ -142,6 +128,7 @@ const registeredCount = computed<number | null>(() => (USE_MOCK ? SAMPLE_SOURCES
         :source-count="registeredCount"
         :references="refusalReferences"
         :suggestions="answer.suggestions"
+        :gate-note="answer.gateNote"
         @suggest="ask"
       />
 
@@ -179,14 +166,6 @@ const registeredCount = computed<number | null>(() => (USE_MOCK ? SAMPLE_SOURCES
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-}
-.mock-banner {
-  margin: 0;
-  background: var(--paper-muted);
-  color: var(--cite-grey);
-  font-size: var(--text-meta);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-1);
 }
 .ask-form {
   display: flex;

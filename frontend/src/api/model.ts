@@ -35,7 +35,8 @@ export interface ConflictModel {
   sides: [SourceCardModel, SourceCardModel]
 }
 
-export type RefusalReason = 'not_covered' | 'no_evidence' | null
+// 阶段三扩第三种原因码：证据有但逐句校验后无保留句（后端 plan 步骤 5b-2）。
+export type RefusalReason = 'not_covered' | 'no_evidence' | 'all_claims_rejected' | null
 
 export interface AnswerModel {
   refusal: boolean
@@ -45,4 +46,9 @@ export interface AnswerModel {
   conflicts: ConflictModel[]
   suggestions: string[]
   elapsedMs: number
+  /** 闸门审计数字（阶段三）：拒答时可解释「最高匹配 x / 阈值 y」，正常回答时为空串 */
+  retrievedCount: number
+  topScore: number | null
+  threshold: number | null
+  gateNote: string
 }

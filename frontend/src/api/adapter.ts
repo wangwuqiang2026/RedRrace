@@ -142,5 +142,9 @@ export function toAnswerModel(a: AnswerOut): AnswerModel {
     conflicts: (a.conflicts ?? []).map(toConflictModel),
     suggestions: a.suggestions ?? [],
     elapsedMs: a.elapsed_ms ?? 0,
+    retrievedCount: a.retrieved_count ?? 0,
+    topScore: a.top_score ?? null,
+    threshold: a.threshold ?? null,
+    gateNote: a.gate_note ?? '',
   }
 }

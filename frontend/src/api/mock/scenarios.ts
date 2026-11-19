@@ -43,17 +43,23 @@ export const ANSWER_OK: AnswerOut = {
       claim: '〔契约样例结论句一〕',
       locator: { quote: SAMPLE_QUOTE, paragraph: 2 },
       source: byId('S001'),
+      verified: true,
     },
     {
       index: 2,
       claim: '〔契约样例结论句二〕',
       locator: { quote: SAMPLE_QUOTE, page: 237, heading_path: ['第三章'] },
       source: byId('S002'),
+      verified: true,
     },
   ],
   conflicts: [],
   suggestions: [],
   elapsed_ms: 0,
+  retrieved_count: 2,
+  top_score: 0.72,
+  threshold: 0.41,
+  gate_note: '',
 }
 
 /** 冲突场景：同一主体+谓词两种记载。
@@ -69,12 +75,14 @@ export const ANSWER_CONFLICT: AnswerOut = {
       claim: '〔契约样例记载一〕',
       locator: { quote: SAMPLE_QUOTE, page: 12 },
       source: byId('S002'),
+      verified: true,
     },
     {
       index: 2,
       claim: '〔契约样例记载二〕',
       locator: { quote: SAMPLE_QUOTE, page: 34 },
       source: byId('S003'),
+      verified: true,
     },
   ],
   conflicts: [
@@ -87,18 +95,24 @@ export const ANSWER_CONFLICT: AnswerOut = {
           claim: '〔契约样例取值 B——非史实陈述〕',
           locator: { quote: SAMPLE_QUOTE, page: 34 },
           source: byId('S003'),
+          verified: true,
         },
         {
           index: 1,
           claim: '〔契约样例取值 A——非史实陈述〕',
           locator: { quote: SAMPLE_QUOTE, page: 12 },
           source: byId('S002'),
+          verified: true,
         },
       ],
     },
   ],
   suggestions: [],
   elapsed_ms: 0,
+  retrieved_count: 2,
+  top_score: 0.72,
+  threshold: 0.41,
+  gate_note: '',
 }
 
 /** ③ 拒答场景：未收录（R3：像说明不像报错；answer 必须空串——契约 model_validator 约束）。
@@ -112,6 +126,10 @@ export const ANSWER_REFUSED: AnswerOut = {
   conflicts: [],
   suggestions: [SAMPLE_QUESTIONS[0], SAMPLE_QUESTIONS[1]],
   elapsed_ms: 0,
+  retrieved_count: 5,
+  top_score: 0.28,
+  threshold: 0.41,
+  gate_note: '当前最高匹配 0.28，低于工作阈值 0.41。',
 }
 
 /** ④ 拒答场景之二：无证据（主题有相关材料，但不足以支撑结论）——D4 封闭集补全（lead 2026-11-13）。
@@ -124,6 +142,10 @@ export const ANSWER_REFUSED_NO_EVIDENCE: AnswerOut = {
   conflicts: [],
   suggestions: [SAMPLE_QUESTIONS[0], SAMPLE_QUESTIONS[2]],
   elapsed_ms: 0,
+  retrieved_count: 0,
+  top_score: null,
+  threshold: 0.41,
+  gate_note: '未检索到任何候选：检索或范围可能有问题，不调用生成模型。',
 }
 
 /**
