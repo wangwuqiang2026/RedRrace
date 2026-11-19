@@ -28,9 +28,9 @@ describe('七页路由骨架', () => {
     expect(router.currentRoute.value.path).toBe('/ask')
   })
 
-  // Task 4 已完成 /cards、/timeline、/map 三页，启用其标题断言；
-  // /routes、/lesson-pack、/audit 仍由 Task 5/6 实现后启用。
-  const ENABLED = new Set(['/cards', '/timeline', '/map'])
+  // Task 4 已完成 /cards、/timeline、/map，Task 5 已完成 /routes；
+  // /lesson-pack、/audit 仍由 Task 6 实现后启用。
+  const ENABLED = new Set(['/cards', '/timeline', '/map', '/routes'])
   for (const [path, title] of Object.entries(TITLES)) {
     if (!title) continue
     const run = ENABLED.has(path) ? it : it.skip
