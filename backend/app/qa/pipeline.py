@@ -105,6 +105,9 @@ def answer_question(
     started = time.monotonic()
     cfg = get_config()
     db = Path(db_path) if db_path is not None else cfg.data_dir / "redtrace.db"
+    # 真实试点库是阶段一建的 V1，没有 V2 的审计列；写日志前幂等补齐（smoke 实测暴露的部署缺口）。
+    from app.db.migrate import migrate
+    migrate(db)
     root = Path(data_dir) if data_dir is not None else cfg.data_dir
     backend = index if index is not None else LocalBackend(config=cfg, db_path=db,
                                                             index_dir=default_index_dir(cfg))

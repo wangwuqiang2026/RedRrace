@@ -148,6 +148,34 @@ def test_v2_migration_adds_audit_columns(tmp_path):
     assert current_version(db) == 2
 
 
+def test_pipeline_upgrades_legacy_v1_db_before_writing_logs(tmp_path):
+    """真实试点库是 V1 建的：流水线写审计列前须自动跑 V2 迁移（幂等），否则 OperationalError。
+
+    这是 smoke 实测暴露的部署缺口：本地测试库都经 migrate() 到 V2，但生产库停留在 V1。
+    """
+    import sqlite3 as sq
+
+    from app.db.migrate import SCHEMA_VERSION, current_version, migrate
+
+    db = tmp_path / "legacy.db"
+    # 手工建一个只有 V1 的库，再删掉版本表里的 V2 记录（模拟旧库）
+    migrate(db)
+    with sq.connect(db) as conn:
+        conn.execute("DELETE FROM schema_version WHERE version = 2")
+        for col in ("retrieved_count", "top_score", "threshold", "gate_note"):
+            conn.execute(f"ALTER TABLE qa_logs DROP COLUMN {col}")
+    assert current_version(db) == 1
+    out = answer_question(AskRequest(question="某校何时创设？"), db_path=db,
+                          index=FakeIndex([hit()]), model=FakeModel(),
+                          threshold=0.41, data_dir=tmp_path)
+    # 空库走拒答路径也要能写日志（不再 OperationalError）
+    assert out.refusal is True
+    assert current_version(db) == SCHEMA_VERSION
+    with sq.connect(db) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM qa_logs").fetchone()[0]
+    assert count == 1, "拒答也要落一条问答日志"
+
+
 def test_qa_log_written_with_prompt_version(seeded_db):
     db, root = seeded_db
     answer_question(AskRequest(question="某校何时创设？"), db_path=db,
