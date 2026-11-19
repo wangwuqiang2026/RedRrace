@@ -720,7 +720,7 @@ def test_threshold_separates_answerable_and_not(index):
   - `verify_answer(答案草稿) -> VerifiedAnswer`（保留与剔除的句子及原因）
   - 提示词版本号常量，写入问答日志
 
-- [ ] **步骤 1：写示例 1 的端到端失败测试**
+- [x] **步骤 1：写示例 1 的端到端失败测试**
 
 ```python
 def test_ask_alumnus_role_in_event(client, seeded_db):
@@ -732,13 +732,13 @@ def test_ask_alumnus_role_in_event(client, seeded_db):
     assert all(c["verified"] for c in body["citations"])
 ```
 
-- [ ] **步骤 2：跑测试确认失败** —— 预期：接口不存在。
+- [x] **步骤 2：跑测试确认失败** —— 预期：接口不存在。
 
-- [ ] **步骤 3：实现大模型调用与提示词**
+- [x] **步骤 3：实现大模型调用与提示词**
 
 生成提示词硬约束：只允许使用给定证据编号；每个结论句用编号标注；证据不足时输出「无证据」标记；不得推断、不得补充、不得改写。温度 0。在线接口（DeepSeek / 通义）与本地 GGUF 模型双实现，按配置切换。换用其他模型（含微调模型）只需实现同一调用接口，不改流水线。
 
-- [ ] **步骤 3b：默认路径必须真的走到检索（本项目最危险失败模式的对应测试）**
+- [x] **步骤 3b：默认路径必须真的走到检索（本项目最危险失败模式的对应测试）**
 
 参考实现里最贵的一条教训：应用能启动、能登录、索引列表里也看得到文档，但**默认路径把检索整段跳过**——选择器 `default()` 返回的模式不在可选项集合里、`gr.State` 里的用户 id 还是哨兵 `-1`，两条都恰好落到「空文档列表 → 跳过检索」的分支。结果模型绕开语料凭预训练知识作答，**语气专业、格式完整、数字具体，只有引用栏是空的**。它不抛异常，是**静默退化成纯 LLM 调用并产生幻觉**。修复方式不是加提示词，是把不变量抽成可断言的常量，并用一条刻意不触发任何 change 事件的端到端用例把默认路径钉住。
 
@@ -748,7 +748,7 @@ def test_ask_alumnus_role_in_event(client, seeded_db):
 2. **一条最默认的端到端用例**：`client.post("/api/ask", json={"question": "…"})`，**不带任何可选字段**，断言 `citations` 非空、`all(c["verified"])`、且 `retrieved_count > 0`（该字段见步骤 5b）。它与阶段零F 的契约测试同套件跑。
 3. **生成前加一道断言**：证据集为空即走拒答，**不得调用模型**；本地调试模式（配置开关）下把这条断言写成异常抛出，防止「检索挂了但答案看起来很正常」进入演示。配套测试见步骤 5b 第 1 条。
 
-- [ ] **步骤 4：实现三层引用校验（防张冠李戴）**
+- [x] **步骤 4：实现三层引用校验（防张冠李戴）**
 
 1. **编号合法性**：答案中标注的编号必须存在于本次证据集；
 2. **逐字定位**：事实条目的引文必须能在解析原文中经归一化（全半角、空白、标点差异）后子串命中，否则该引用判为未通过；
@@ -756,7 +756,7 @@ def test_ask_alumnus_role_in_event(client, seeded_db):
 
 任一句不通过即从答案剔除；引用全被剔除则转拒答。校验结果写入问答日志。
 
-- [ ] **步骤 4b：出处回链必须指向持久副本，重建索引后不得悬空**
+- [x] **步骤 4b：出处回链必须指向持久副本，重建索引后不得悬空**
 
 参考实现的坑：存储副本按裸内容哈希落盘（**没有扩展名**），于是块的 `file_path` 只能指向当时的**工作副本目录**（上传缓存、或重建索引工具的 `repair_src` 目录）；工具结束会删掉那个目录，路径当场悬空，引用「预览」永久打不开，日志里反复刷 `… does not exist`。它的修法是副本命名 `<哈希><扩展名>` 落持久目录、`Source.path` 同名不多存一份，并把持久目录加进可访问白名单。
 
@@ -773,7 +773,7 @@ def test_citation_target_survives_reindex(seeded_db, tmp_path):
 
 前端可见面对应阶段零F 既有的「定位待补」占位：路径解析不出来时显示占位，**不得静默给一个点开就 404 的链接**；该项已列进 `docs/视觉验收清单.md` 的 B1/B2 组，阶段八复跑时一并勾。
 
-- [ ] **步骤 5：实现拒答（示例 2）**
+- [x] **步骤 5：实现拒答（示例 2）**
 
 ```python
 def test_refuse_unknown_person(client, seeded_db):
@@ -787,7 +787,7 @@ def test_refuse_unknown_person(client, seeded_db):
 
 触发条件：最高**综合分**低于阈值（阶段二步骤 4b：重排分不参与判定）、或证据集为空、或校验后无保留句子。参考建议取前三张卡片（姓名 + 一句摘要 + 出处），**不回答该人物的任何事实**。
 
-- [ ] **步骤 5b：闸门的四条硬要求——不调模型、可审计、可放宽、可解释（依参考实现补强）**
+- [x] **步骤 5b：闸门的四条硬要求——不调模型、可审计、可放宽、可解释（依参考实现补强）**
 
 1. **空证据不调模型**。`refusal_reason` 为 `not_covered` 或 `no_evidence` 时，流水线必须在调用生成模型之前返回。用假 LLM 夹具（`tests/helpers.py` 已有的桩件形态）断言调用次数为 0：
 
@@ -810,7 +810,7 @@ def test_refusal_never_calls_llm(client, seeded_db, stub_llm):
 
 4. **拒答文案可解释**：写明「知识库未收录」外，附一句「当前最高匹配 0.xx，低于工作阈值 0.yy」（阶段零F 的 RefusalNotice 已有版式，字段由本步补进契约——新增字段属向后兼容）。用户与审核台都需要能一眼看出这是「闸门判定」而不是「系统坏了」。
 
-- [ ] **步骤 6：示例 1 的冲突分支测试（配合阶段四的冲突视图）**
+- [ ] **步骤 6：示例 1 的冲突分支测试（配合阶段四的冲突视图）** —— 阶段三只做接口占位（`AnswerOut.conflicts` 恒空组，见 `pipeline._conflicts_for`），真正的冲突检测与并列展示在阶段四实现并测试；此处保持未勾选，不假完成。
 
 ```python
 def test_ask_conflict_marks_disputed(client, seeded_db):
@@ -821,16 +821,16 @@ def test_ask_conflict_marks_disputed(client, seeded_db):
     assert "不一致" in body["answer"] or "存疑" in body["answer"]
 ```
 
-- [ ] **步骤 7：跑全部问答测试**
+- [x] **步骤 7：跑全部问答测试** —— `cd backend && python -m pytest -q` → 607 passed；前端 117 passed + build + e2e 19 passed/2 skipped
 
 运行：`python -m pytest backend/tests/test_ask_examples.py backend/tests/test_citation_verify.py backend/tests/test_refusal.py -v`
 预期：全通过。
 
-- [ ] **步骤 8：问答页去 mock，接真接口**
+- [x] **步骤 8：问答页去 mock，接真接口** —— 生产入口 mock 分支已删（夹具只在 tests 与 src/api/mock）；契约测试含漂移演练、vitest 117、build、e2e 19/2 全绿
 
 `frontend` 侧把 `VITE_USE_MOCK` 置 0，问答页走真实 `/api/ask`：出处卡片渲染真 `citations`、拒答区渲染真 `refusal_reason` 与参考建议、冲突区此时仍允许 mock（阶段四接）。跑阶段零F 的契约与红线测试 + 端到端问答测试，确认「答案句末每个上标编号都能点开一张真出处卡」。此步完成后，问答页**不再保留 mock 分支**（`client.ts` 里该接口的 mock 入口删除，只留测试夹具）。
 
-- [ ] **步骤 9：提交** —— `git commit -m "feat(阶段三): 可溯源问答流水线、引用校验、拒答与问答页真数据"`
+- [x] **步骤 9：提交** —— 按任务拆分提交（`b2b0b14` → `ee4c1b1`），阶段末另有收口提交；未用本行原定单条提交信息（仓库惯例 D6）
 
 ---
 

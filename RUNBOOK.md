@@ -167,3 +167,52 @@ logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(mes
 
 复现与数字口径见 `docs/评测报告.md`；阶段二裁决与进度台账见 `.superpowers/sdd/plan/progress.md`
 （工作区临时文件，长期留档需用户同意）。
+
+## 阶段三 可溯源问答（2026-11-19）
+
+**演示前声明**：问答流水线已接真检索 + 真 LLM + 三层引用校验，但阈值 τ=0.41 在试点语料上
+「可分性重叠」（阶段二已记录），部分可答题会被分数闸门误拒；冲突组本阶段恒空（阶段四接）。
+全量数字待补采 9 部电子书后重跑。
+
+### 命令（在 `backend/` 下）
+
+```powershell
+cd backend
+
+# 起服务（问答页走真接口）
+python -m uvicorn app.main:app --app-dir . --port 8000
+
+# 一条问答（需已建索引 + 阈值文件；旧库会自动补 V2 审计列）
+curl -X POST http://127.0.0.1:8000/api/ask -H "Content-Type: application/json" `
+  -d '{"question":"红军长征何时开始？"}'
+
+# 门禁
+python -m ruff check .
+python -m pytest -q          # 607 passed（2026-11-19）
+```
+
+前端：`pnpm test`（117）/ `pnpm build` / `pnpm exec playwright test`（19 passed + 2 skipped）。
+问答页生产入口已**无 mock 分支**；`src/api/mock/` 的契约样例只供组件与 e2e 测试夹具使用。
+
+### 流水线与关键口径
+
+1. 顺序：检索（`LocalBackend`，默认路径必走）→ 证据组装（按 claim_id 回表取条目+来源+定位）
+   → 拒答闸门（空证据/低分**不调模型**）→ 受约束生成（temperature=0、`enable_thinking` 显式）
+   → 三层引用校验（编号 / 引文逐字 / 主体一致含别名）→ 出处回链 + qa_logs/audit_logs。
+2. **闸门只认 `Hit.score`**（跨请求可比的相似度），重排分永不参与；三原因码
+   `not_covered` / `no_evidence` / `all_claims_rejected`，响应带 `retrieved_count` / `top_score` /
+   `threshold` / `gate_note` 四个审计字段，前端拒答区展示可解释说明行。
+3. **逐字定位读 parsed 的 `full_text`**（不是 blocks 拼接——块边界会切断引文），且原文字典的键是
+   **claim_id** 而非引用序号 `[n]`（真实 claim_id 可达三位数，用引用号查会全查不到 → 真模型答案
+   被全剔除）。这两处是真实 LLM 冒烟暴露并修复的缺口（2026-11-19）。
+4. 旧库升级：试点库是阶段一建的 V1，`answer_question` 写日志前会幂等跑 V2 迁移补四审计列。
+5. 结构化语料放宽：罕见实体词逐字命中 + 只出现在 ≤30% 候选 + 表格式行（≥3 字段且 ≥60% 含数字）
+   三条同时成立才降到 `term_floor=0.33`；设 0 即关闭。
+
+### 双实现与降级
+
+| 维度 | 档位 | 切换 | 行为 |
+|---|---|---|---|
+| 生成 | `online` / `local` | `LLM_BACKEND` | online 走 `chat/completions`（复用阶段一 `llm_*` 配置）；local 需 `llama-cpp-python` + 自取 GGUF，缺依赖显式报错不换档 |
+
+提示词版本 `PROMPT_VERSION` 写进 qa_logs.prompt_version；改 `prompt.py` 必须递增版本。
