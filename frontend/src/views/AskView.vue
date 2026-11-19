@@ -1,16 +1,16 @@
 <script setup lang="ts">
-// AskView —— 问答页（阶段三步骤 8：去 mock，接真接口）：提问区 → 答案区（句末上标）→ 冲突区 → 出处区 ｜ 拒答区互斥。
-// 本页只走 `POST /api/ask` 真接口（src/api/client.ts）；mock 夹具只留在 tests 与 src/api/mock
-// 供组件版式测试使用，生产入口不再有 VITE_USE_MOCK 分支。
-// 组件只吃前端模型（src/api/model.ts）；后端字段名一律经 src/api/adapter.ts（lead 约束）。
+// AskView —— 问答页（溯源控制台）：提问区 → 答案区（打字机 + 句末上标）→ 冲突区 → 出处区 ｜ 拒答区互斥。
+// 右侧 EvidencePanel 承载检索雷达 / 闸门仪表 / 证据链；真接口链路 POST /api/ask 与全部测试契约保持不变。
+// 组件只吃前端模型（src/api/model.ts）；后端字段名一律经 src/api/adapter.ts（本页不碰）。
 import { ref, computed } from 'vue'
 import type { AnswerModel } from '../api/model'
 import { SAMPLE_QUESTIONS } from '../api/mock/scenarios'
 import { askApi } from '../api/client'
 import SourceCard from '../components/SourceCard.vue'
 import ConflictPair from '../components/ConflictPair.vue'
-import CitationMark from '../components/CitationMark.vue'
 import RefusalNotice from '../components/RefusalNotice.vue'
+import TypewriterText from '../components/TypewriterText.vue'
+import EvidencePanel from '../components/EvidencePanel.vue'
 
 const question = ref('')
 const answer = ref<AnswerModel | null>(null)
@@ -64,112 +64,177 @@ const registeredCount = computed<number | null>(() => null)
 </script>
 
 <template>
-  <div class="ask-page">
-    <form class="ask-form" @submit.prevent="ask(question)">
-      <label class="visually-hidden" for="ask-input">提问</label>
-      <input
-        id="ask-input"
-        v-model="question"
-        type="search"
-        placeholder="请输入与已登记来源相关的问题"
-        autocomplete="off"
-      />
-      <button type="submit" class="ask-btn" :disabled="loading || !question.trim()">
-        <span v-if="loading" aria-hidden="true">（提交中）</span>提问
-      </button>
-    </form>
+  <div class="ask-console">
+    <div class="console-main">
+      <header class="console-head">
+        <!-- 英文题眉走伪元素，避免 A4 可见文案红线（smoke.test.ts） -->
+        <p class="console-eyebrow" aria-label="溯源查询控制台"></p>
+        <h1 class="console-title">溯源问答</h1>
+        <p class="console-sub">依据已登记来源回答，每个结论可回链到逐字引文。</p>
+      </header>
 
-    <div class="samples" aria-label="示例问题">
-      <button
-        v-for="q in SAMPLE_QUESTIONS"
-        :key="q"
-        type="button"
-        class="sample-chip"
-        data-test="sample-chip"
-        @click="ask(q)"
-      >
-        {{ q }}
-      </button>
-    </div>
+      <form class="ask-form" @submit.prevent="ask(question)">
+        <label class="visually-hidden" for="ask-input">提问</label>
+        <span class="prompt-glyph" aria-hidden="true">&gt;</span>
+        <input
+          id="ask-input"
+          v-model="question"
+          type="search"
+          placeholder="请输入与已登记来源相关的问题"
+          autocomplete="off"
+        />
+        <button type="submit" class="ask-btn" :disabled="loading || !question.trim()">
+          <span v-if="loading" aria-hidden="true">检索中…</span><span v-else>提问</span>
+        </button>
+      </form>
 
-    <!-- >1s 显示骨架屏（§5.1.1）；壳阶段以静态骨架呈现 -->
-    <div v-if="loading" class="skeleton" aria-hidden="true">
-      <div class="skeleton-line" style="width: 85%"></div>
-      <div class="skeleton-line" style="width: 70%"></div>
-      <div class="skeleton-line" style="width: 60%"></div>
-    </div>
-
-    <div v-else-if="techError" class="tech-error" role="alert">
-      <p class="tech-error-line">
-        <svg
-          data-icon="x-circle"
-          viewBox="0 0 24 24"
-          width="18"
-          height="18"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          aria-hidden="true"
+      <div class="samples" aria-label="示例问题">
+        <button
+          v-for="q in SAMPLE_QUESTIONS"
+          :key="q"
+          type="button"
+          class="sample-chip"
+          data-test="sample-chip"
+          @click="ask(q)"
         >
-          <circle cx="12" cy="12" r="10" />
-          <path d="m15 9-6 6" />
-          <path d="m9 9 6 6" />
-        </svg>
-        接口暂时不可用：{{ techError }}
-      </p>
-      <button type="button" class="retry-btn" @click="ask(question)">重试</button>
+          <span class="chip-dot" aria-hidden="true"></span>{{ q }}
+        </button>
+      </div>
+
+      <!-- 加载骨架：shimmer 流光条 -->
+      <div v-if="loading" class="skeleton" aria-hidden="true">
+        <div class="skeleton-line skeleton-wide dm-shimmer"></div>
+        <div class="skeleton-line skeleton-medium dm-shimmer"></div>
+        <div class="skeleton-line skeleton-narrow dm-shimmer"></div>
+      </div>
+
+      <div v-else-if="techError" class="tech-error" role="alert">
+        <p class="tech-error-line">
+          <svg
+            data-icon="x-circle"
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="m15 9-6 6" />
+            <path d="m9 9 6 6" />
+          </svg>
+          接口暂时不可用：{{ techError }}
+        </p>
+        <button type="button" class="retry-btn" @click="ask(question)">重试</button>
+      </div>
+
+      <template v-else-if="answer">
+        <!-- 拒答区与答案区互斥（§5.1.4） -->
+        <RefusalNotice
+          v-if="answer.refusal"
+          :reason="answer.refusalReason"
+          :source-count="registeredCount"
+          :references="refusalReferences"
+          :suggestions="answer.suggestions"
+          :gate-note="answer.gateNote"
+          @suggest="ask"
+        />
+
+        <template v-else>
+          <section
+            class="answer-zone"
+            data-test="answer"
+            role="status"
+            aria-live="polite"
+            :data-primary-source="citationFor(1)?.source.sourceId ?? ''"
+          >
+            <h2 class="zone-title">回答</h2>
+            <TypewriterText
+              :text="answer.answer"
+              :segments="segments"
+              :citations="answer.citations"
+            />
+          </section>
+
+          <section v-if="answer.conflicts.length" class="conflict-zone" aria-label="冲突记载">
+            <ConflictPair v-for="(c, i) in answer.conflicts" :key="i" :conflict="c" />
+          </section>
+
+          <section id="sources" class="sources-zone">
+            <h2 class="zone-title">本回答的出处（共 {{ answer.citations.length }} 条）</h2>
+            <div class="sources-list">
+              <!-- SourceCard 内部已携带 id="source-{id}"，此处不重复 id -->
+              <SourceCard v-for="c in answer.citations" :key="c.source.sourceId" :src="c.source" />
+            </div>
+          </section>
+        </template>
+      </template>
     </div>
 
-    <template v-else-if="answer">
-      <!-- 拒答区与答案区互斥（§5.1.4） -->
-      <RefusalNotice
-        v-if="answer.refusal"
-        :reason="answer.refusalReason"
-        :source-count="registeredCount"
-        :references="refusalReferences"
-        :suggestions="answer.suggestions"
-        :gate-note="answer.gateNote"
-        @suggest="ask"
-      />
-
-      <template v-else>
-        <section class="answer-zone" data-test="answer" role="status" aria-live="polite">
-          <h2 class="zone-title">回答</h2>
-          <p class="answer-text">
-            <template v-for="(seg, i) in segments" :key="i">
-              <CitationMark
-                v-if="seg.kind === 'cite' && citationFor(seg.index)"
-                :index="seg.index"
-                :source-id="citationFor(seg.index)!.source.sourceId"
-                :source-title="citationFor(seg.index)!.source.title"
-              />
-              <span v-else>{{ seg.kind === 'text' ? seg.value : '' }}</span>
-            </template>
-          </p>
-        </section>
-
-        <section v-if="answer.conflicts.length" class="conflict-zone" aria-label="冲突记载">
-          <ConflictPair v-for="(c, i) in answer.conflicts" :key="i" :conflict="c" />
-        </section>
-
-        <section id="sources" class="sources-zone">
-          <h2 class="zone-title">本回答的出处（共 {{ answer.citations.length }} 条）</h2>
-          <SourceCard v-for="c in answer.citations" :key="c.source.sourceId" :src="c.source" />
-        </section>
-      </template>
-    </template>
+    <EvidencePanel class="console-side" :answer="answer" :loading="loading" />
   </div>
 </template>
 
 <style scoped>
-.ask-page {
+.ask-console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-6);
+  align-items: start;
+}
+.console-main {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  min-width: 0;
 }
+.console-eyebrow {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  letter-spacing: 0.18em;
+  color: var(--dm-cyan);
+}
+.console-eyebrow::after { content: 'TRACE / QUERY CONSOLE'; }
+.console-title {
+  margin: 0;
+  font-family: var(--dm-font-display);
+  font-size: var(--text-display);
+  line-height: var(--line-height-display);
+  font-weight: var(--fw-bold);
+  background: linear-gradient(135deg, var(--dm-ink), var(--dm-red));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.console-sub {
+  margin: var(--space-1) 0 0;
+  color: var(--dm-ink-dim);
+  font-size: var(--text-meta);
+}
+/* 提问区：深色玻璃面 + 聚焦朱砂红光晕 */
 .ask-form {
   display: flex;
-  gap: var(--space-3);
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--dm-bg-glass);
+  border: 1px solid var(--dm-line);
+  border-radius: var(--dm-radius);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.ask-form:focus-within {
+  border-color: var(--dm-red);
+  box-shadow: 0 0 0 3px var(--dm-glow-red), 0 0 24px var(--dm-glow-red);
+}
+.prompt-glyph {
+  padding-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-h2);
+  color: var(--dm-red);
 }
 .ask-form input {
   flex: 1;
@@ -177,10 +242,13 @@ const registeredCount = computed<number | null>(() => null)
   height: 48px;
   font-size: var(--text-body);
   padding: 0 var(--space-3);
-  border: 1px solid var(--line-border);
-  border-radius: var(--radius-1);
-  background: var(--paper-card);
-  color: var(--ink);
+  border: none;
+  background: transparent;
+  color: var(--dm-ink);
+  outline: none;
+}
+.ask-form input::placeholder {
+  color: var(--dm-ink-dim);
 }
 .visually-hidden {
   position: absolute;
@@ -194,19 +262,22 @@ const registeredCount = computed<number | null>(() => null)
 .ask-btn {
   height: 48px;
   padding: 0 var(--space-6);
-  background: var(--brand-red);
-  color: var(--ink-inverse);
+  background: linear-gradient(135deg, var(--dm-red), var(--dm-red-dim));
+  color: var(--dm-ink);
   border: none;
-  border-radius: var(--radius-1);
+  border-radius: var(--dm-radius);
   font-size: var(--text-body);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw-semibold);
   cursor: pointer;
+  box-shadow: 0 0 18px var(--dm-glow-red);
+  transition: filter 0.2s ease, box-shadow 0.2s ease;
 }
 .ask-btn:hover:not(:disabled) {
-  background: var(--brand-red-deep);
+  filter: brightness(1.18);
+  box-shadow: 0 0 28px var(--dm-glow-red);
 }
 .ask-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: default;
 }
 .samples {
@@ -215,25 +286,57 @@ const registeredCount = computed<number | null>(() => null)
   gap: var(--space-2);
 }
 .sample-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   min-height: 44px;
   padding: var(--space-2) var(--space-3);
-  background: var(--paper-muted);
-  color: var(--link-blue);
-  border: 1px solid var(--line-border);
-  border-radius: var(--radius-1);
+  background: var(--dm-bg-glass);
+  color: var(--dm-ink-dim);
+  border: 1px solid var(--dm-line);
+  border-radius: 999px;
   font-size: var(--text-meta);
   cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.sample-chip:hover {
+  color: var(--dm-ink);
+  border-color: var(--dm-red);
+  box-shadow: 0 0 12px var(--dm-glow-red);
+}
+.chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dm-red);
+  box-shadow: 0 0 8px var(--dm-glow-red);
+  flex-shrink: 0;
+}
+/* shimmer 骨架 */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--dm-bg-elev);
+  border: 1px solid var(--dm-line);
+  border-radius: var(--dm-radius);
 }
 .skeleton-line {
   height: 16px;
-  background: var(--paper-muted);
-  border-radius: var(--radius-1);
-  margin-bottom: var(--space-2);
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--dm-bg), var(--dm-line), var(--dm-bg));
+  background-size: 200% 100%;
+  animation: dm-shimmer 1.6s linear infinite;
 }
+.skeleton-wide { width: 85%; }
+.skeleton-medium { width: 70%; }
+.skeleton-narrow { width: 60%; }
 .tech-error {
-  background: var(--error-red-bg);
-  color: var(--error-red);
-  border-radius: var(--radius-1);
+  background: var(--dm-bg-elev);
+  color: var(--dm-red);
+  border: 1px solid var(--dm-red-dim);
+  border-radius: var(--dm-radius);
   padding: var(--space-4);
 }
 .tech-error-line {
@@ -245,35 +348,74 @@ const registeredCount = computed<number | null>(() => null)
 .retry-btn {
   min-height: 44px;
   padding: var(--space-2) var(--space-4);
-  background: var(--paper-card);
-  color: var(--error-red);
-  border: 1px solid var(--error-red);
-  border-radius: var(--radius-1);
+  background: var(--dm-bg-glass);
+  color: var(--dm-red);
+  border: 1px solid var(--dm-red);
+  border-radius: var(--dm-radius);
   cursor: pointer;
 }
+.retry-btn:hover {
+  box-shadow: 0 0 14px var(--dm-glow-red);
+}
 .zone-title {
-  font-family: var(--font-serif);
+  font-family: var(--dm-font-display);
   font-size: var(--text-h1);
   line-height: var(--line-height-h1);
   font-weight: var(--fw-semibold);
-  margin-bottom: var(--space-3);
+  margin: 0 0 var(--space-3);
+  color: var(--dm-ink);
 }
 .answer-zone {
   max-width: var(--answer-column-width);
+  padding: var(--space-4);
+  background: var(--dm-bg-glass);
+  border: 1px solid var(--dm-line);
+  border-left: 3px solid var(--dm-red);
+  border-radius: var(--dm-radius);
 }
-.answer-text {
-  margin: 0;
-  font-size: var(--text-body);
-  line-height: var(--line-height-body);
-}
-.sources-zone {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
+.sources-zone,
 .conflict-zone {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+@media (max-width: 1024px) {
+  .ask-console {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 767px) {
+  .ask-console {
+    gap: var(--space-4);
+  }
+  .ask-form {
+    flex-wrap: wrap;
+  }
+  .ask-form input {
+    flex-basis: 100%;
+  }
+  .ask-btn {
+    flex: 1;
+  }
+  .console-title {
+    font-size: var(--text-h1);
+  }
+}
+</style>
+
+<!-- dm-flash 必须定义在全局样式块：class 由 JS 动态加到 #source-* 元素，scoped 样式覆盖不到 -->
+<style>
+@keyframes dm-flash {
+  0%, 100% { box-shadow: none; }
+  35% { box-shadow: 0 0 0 2px var(--dm-red), 0 0 24px var(--dm-glow-red); }
+}
+.dm-flash {
+  animation: dm-flash 1.2s ease-out 1;
 }
 </style>
