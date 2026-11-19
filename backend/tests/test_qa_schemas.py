@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from app.ingestion.registry import SourceRecord
 from app.main import app
+from app.qa import constants as qa_constants
 from app.qa.schemas import (
     AnswerOut,
     AskRequest,
@@ -268,7 +269,7 @@ def test_ask_request_role_is_a_closed_set():
 def test_ask_request_field_names_and_types_are_locked():
     """AskRequest 是简报外新增的模型（依据 plan 阶段三接口约定），因此更要钉死字段。"""
     fields = AskRequest.model_fields
-    assert set(fields) == {"question", "top_k", "role"}
+    assert set(fields) == {"question", "top_k", "role", "source_ids", "media_types"}
     assert fields["question"].annotation is str
     assert fields["top_k"].annotation is int
     assert fields["role"].annotation == Literal["学生", "教师", "馆员"]
@@ -277,9 +278,13 @@ def test_ask_request_field_names_and_types_are_locked():
 
 
 def test_contract_model_field_names_are_locked():
-    """五个契约模型的字段名集合一次定死：前端 openapi-typescript 生成的类型全靠它们。"""
+    """五个契约模型的字段名集合一次定死：前端 openapi-typescript 生成的类型全靠它们。
+
+    阶段三按准入条件 4「可加不可改」扩展（审计字段 / verified / 来源范围），
+    因此锁定集合同步扩为「阶段零F 原字段 + 阶段三新增字段」。
+    """
     assert set(Locator.model_fields) == {"page", "paragraph", "heading_path", "quote", "url_anchor"}
-    assert set(Citation.model_fields) == {"index", "claim", "locator", "source"}
+    assert set(Citation.model_fields) == {"index", "claim", "locator", "source", "verified"}
     assert set(ConflictItem.model_fields) == {"subject", "predicate", "sides"}
     assert set(AnswerOut.model_fields) == {
         "refusal",
@@ -289,7 +294,54 @@ def test_contract_model_field_names_are_locked():
         "conflicts",
         "suggestions",
         "elapsed_ms",
+        "retrieved_count",
+        "top_score",
+        "threshold",
+        "gate_note",
     }
+    assert set(AskRequest.model_fields) == {"question", "top_k", "role", "source_ids", "media_types"}
+
+
+# ── 阶段三新增：可审计字段、校验标记、默认路径不变量（plan 步骤 1 / 3b / 5b）────────────
+def test_citation_verified_defaults_to_false_not_true():
+    """verified 默认 False：未校验的引用不得默认显示「已通过」（步骤 1 断言 c["verified"]）。"""
+    assert make_citation().verified is False
+    assert make_citation().model_dump()["verified"] is False
+
+
+def test_answer_audit_fields_defaults():
+    """审计字段有默认值（向后兼容），但拒答时必须由流水线填入真实数字（步骤 5b-2）。"""
+    out = make_answer()
+    assert out.retrieved_count == 0
+    assert out.top_score is None
+    assert out.threshold is None
+    assert out.gate_note == ""
+
+
+def test_refusal_reason_closed_set_includes_all_claims_rejected():
+    """三种原因码：not_covered / no_evidence / all_claims_rejected（步骤 5b-2）。"""
+    out = make_answer(refusal=True, answer="", refusal_reason="all_claims_rejected")
+    assert out.refusal_reason == "all_claims_rejected"
+
+
+def test_defaults_are_legal_constants_not_hand_waved():
+    """默认路径不变量写成常量关系（步骤 3b-1），不是口头约定。"""
+    assert qa_constants.DEFAULT_IDENTITY in qa_constants.IDENTITY_CHOICES
+    lo, hi = qa_constants.TOP_K_RANGE
+    assert lo <= qa_constants.DEFAULT_TOP_K <= hi, "默认召回数必须落在允许区间内"
+    assert qa_constants.DEFAULT_TOP_K > 0
+    assert qa_constants.TOP_K_RANGE[0] >= 1
+    assert qa_constants.DEFAULT_MAX_DOCS > qa_constants.DEFAULT_TOP_K
+    assert 0.0 < qa_constants.TERM_FLOOR < qa_constants.DEFAULT_THRESHOLD
+    assert qa_constants.PROMPT_VERSION
+
+
+def test_empty_source_scope_means_unrestricted_not_search_zero():
+    """来源范围为空的语义必须是「不限制」（步骤 3b-1）：查 0 个来源会假装「未收录」。"""
+    req = AskRequest(question="q")
+    assert req.source_ids == [] and req.media_types == []
+    assert qa_constants.is_unrestricted(req.source_ids, req.media_types) is True
+    assert qa_constants.is_unrestricted(["S001"], []) is False
 
 
 # ── 简报测试 4：契约模型必须出现在 openapi 里 ──

@@ -53,12 +53,17 @@ class SourceOut(BaseModel):
 
 
 class Citation(BaseModel):
-    """一条带出处的引用：编号 + 断言 + 定位 + 来源。"""
+    """一条带出处的引用：编号 + 断言 + 定位 + 来源。
+
+    `verified` 默认 False（阶段三步骤 1）：未经三层校验的引用不得默认显示「已通过」。
+    校验通过后由 `citation.verify_answer()` 回填 True；前端据此决定是否渲染引用标记。
+    """
 
     index: int
     claim: str
     locator: Locator
     source: SourceOut
+    verified: bool = False
 
 
 class ConflictItem(BaseModel):
@@ -84,11 +89,18 @@ class ConflictItem(BaseModel):
 
 
 class AskRequest(BaseModel):
-    """提问请求：问题、召回条数、身份（plan 阶段一/三「接口约定」）。"""
+    """提问请求：问题、召回条数、身份（plan 阶段一/三「接口约定」）。
+
+    阶段三新增 `source_ids` / `media_types`（可选来源范围）。**空范围的语义是「不限制」而不是
+    「查不到」**（步骤 3b-1）：把空选择当成「搜 0 个来源」会让系统用「知识库没有依据」
+    回答一个根本没检索的问题。判定收在 `qa.constants.is_unrestricted()`，测试与流水线共用。
+    """
 
     question: str
     top_k: int = 8
     role: Literal["学生", "教师", "馆员"] = "学生"
+    source_ids: list[str] = Field(default_factory=list)
+    media_types: list[str] = Field(default_factory=list)
 
 
 class AnswerOut(BaseModel):
@@ -101,20 +113,22 @@ class AnswerOut(BaseModel):
     """
 
     refusal: bool
-    # 简报原写 `Literal["not_covered", "no_evidence", None]`；ruff 的 PYI061 要求把 None 挪出
-    # Literal。两种写法的**取值集合相同**（两个字符串 + null），但 JSON Schema 结构不同：
-    #   Literal[..., None]   -> {"enum": ["not_covered", "no_evidence", null]}
-    #   Literal[...] | None  -> {"anyOf": [{"enum": [...], "type": "string"}, {"type": "null"}]}
-    # 这里按 ruff 采用后者。openapi-typescript 对两种结构一般都解析成
-    # `"not_covered" | "no_evidence" | null`，但这一点须由前端用真实生成结果确认
-    # （已写进报告的风险项，也在给 frontend-dev 的通知里点名）；若生成结果确有差异，
-    # 改回原写法并在该行加 ruff 对 PYI061 的豁免注释即可，取值集合不变。
-    refusal_reason: Literal["not_covered", "no_evidence"] | None = None
+    # ruff 的 PYI061 要求把 None 挪出 Literal，故写作 `Literal[...] | None`。
+    # JSON Schema 结构为 anyOf[enum(strings), null]，openapi-typescript 解析成
+    # `"not_covered" | "no_evidence" | "all_claims_rejected" | null`（阶段三扩了第三个原因码）。
+    # 阶段三扩为三种原因码：`all_claims_rejected` = 证据有、但逐句校验后无保留句（步骤 5b-2）。
+    refusal_reason: Literal["not_covered", "no_evidence", "all_claims_rejected"] | None = None
     answer: str
     citations: list[Citation]
     conflicts: list[ConflictItem]
     suggestions: list[str]
     elapsed_ms: int
+    # 闸门审计字段（步骤 5b-2）：拒答时必须带真实数字，事后能复原「检索是否发生、分数多少、
+    # 当时阈值多少」。字段有默认值只为阶段零F 契约兼容；流水线在拒答路径必定覆盖它们。
+    retrieved_count: int = 0
+    top_score: float | None = None
+    threshold: float | None = None
+    gate_note: str = ""
 
     @model_validator(mode="after")
     def _refusal_means_empty_answer_with_reason(self) -> AnswerOut:
