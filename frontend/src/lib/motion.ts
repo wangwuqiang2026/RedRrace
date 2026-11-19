@@ -55,7 +55,10 @@ export function createCounter(el: Element, to: number, opts?: { duration?: numbe
 }
 
 /** SVG 路径描绘：按真实路径长度设置 dash，再随滚动把 offset 补间到 0。 */
-export function createPathDraw(el: SVGPathElement, opts?: { trigger?: Element }): gsap.core.Tween | null {
+export function createPathDraw(
+  el: SVGPathElement,
+  opts?: { trigger?: Element; end?: string },
+): gsap.core.Tween | null {
   if (DISABLED || prefersReducedMotion()) return null
   const length = el.getTotalLength()
   el.style.strokeDasharray = String(length)
@@ -67,7 +70,8 @@ export function createPathDraw(el: SVGPathElement, opts?: { trigger?: Element })
     scrollTrigger: {
       trigger: opts?.trigger ?? el,
       start: 'top 85%',
-      end: 'center 40%',
+      // 默认维持原行为；长叙事页可传 end 让绘制贯穿整段（不触碰内部 vars）
+      end: opts?.end ?? 'center 40%',
       scrub: 1,
     },
   })

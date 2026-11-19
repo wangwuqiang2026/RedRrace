@@ -51,6 +51,9 @@ const routeD = computed(() => {
 let ctx: ReturnType<typeof motionContext> = null
 let drawTween: ReturnType<typeof createPathDraw> = null
 let rafId = 0
+let transitionRafId = 0
+// 收起全图时跟随圆点从终点平滑回落到滚动进度；非 null 时优先于主循环
+let followProgressOverride: number | null = null
 // 各站点在路径上的长度比例（采样最近点求得），用于高亮与镜头跟随同步
 let stopRatios: number[] = []
 
@@ -108,10 +111,36 @@ function computeStopRatios(path: SVGPathElement) {
 function tick() {
   // 展开全图时滚动驱动暂时让位给「推进到终点」的确定状态
   if (!expanded.value) {
-    const st = drawTween?.scrollTrigger
-    updateFollower(st ? st.progress : 0)
+    if (followProgressOverride !== null) {
+      updateFollower(followProgressOverride)
+    } else {
+      const st = drawTween?.scrollTrigger
+      updateFollower(st ? st.progress : 0)
+    }
   }
   rafId = requestAnimationFrame(tick)
+}
+
+/** 收起全图后让跟随圆点从终点平滑回落到滚动进度，避免瞬移。 */
+function glideFollowerTo(target: number) {
+  if (transitionRafId) cancelAnimationFrame(transitionRafId)
+  const from = 1
+  const duration = 450
+  const startedAt = performance.now()
+  const step = (now: number) => {
+    const t = Math.min(1, (now - startedAt) / duration)
+    const eased = 1 - Math.pow(1 - t, 3)
+    followProgressOverride = from + (target - from) * eased
+    updateFollower(followProgressOverride)
+    if (t < 1) {
+      transitionRafId = requestAnimationFrame(step)
+    } else {
+      transitionRafId = 0
+      followProgressOverride = null
+    }
+  }
+  followProgressOverride = from
+  transitionRafId = requestAnimationFrame(step)
 }
 
 /** 「展开全图」：真正放大地图，并把路径绘制推进到 1；再点恢复滚动驱动。 */
@@ -123,9 +152,8 @@ function toggleExpand() {
     updateFollower(1)
   } else {
     drawTween?.scrollTrigger?.enable()
-    drawTween?.scrollTrigger?.refresh()
     const st = drawTween?.scrollTrigger
-    updateFollower(st ? st.progress : 0)
+    glideFollowerTo(st ? st.progress : 0)
   }
 }
 
@@ -150,13 +178,8 @@ onMounted(() => {
   ctx.add(() => {
     const cards = Array.from(storyRef.value?.querySelectorAll('.stop-card') ?? [])
     createStagger(cards, { y: 24, stagger: 0.12 })
-    drawTween = createPathDraw(path, { trigger: storyRef.value! })
-    if (drawTween?.scrollTrigger) {
-      // 工厂默认 end 为 'center 40%'；叙事区很长，改写为整段滚动驱动，
-      // 让路径绘制真正贯穿 6 段故事（不改 motion.ts 的公开契约）。
-      drawTween.scrollTrigger.vars.end = 'bottom bottom'
-      drawTween.scrollTrigger.refresh()
-    }
+    // 叙事区很长，用工厂的 end 参数让路径绘制贯穿 6 段故事
+    drawTween = createPathDraw(path, { trigger: storyRef.value!, end: 'bottom bottom' })
     if (typeof path.getTotalLength === 'function') {
       computeStopRatios(path)
       updateFollower(0)
@@ -167,6 +190,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (rafId) cancelAnimationFrame(rafId)
+  if (transitionRafId) cancelAnimationFrame(transitionRafId)
   drawTween?.scrollTrigger?.kill()
   drawTween?.kill()
   drawTween = null
