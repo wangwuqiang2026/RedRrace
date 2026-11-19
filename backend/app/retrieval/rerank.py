@@ -104,9 +104,15 @@ class ApiReranker:
                     "（该部署服务端实测上限 32,768；超限服务端明确 400、不静默截断，"
                     "所以这里在客户端先拦下并跳过重排）"
                 )
+        # 请求体必须是**扁平**的 `model`/`query`/`documents`（OpenAI 兼容 `compatible-api/v1/reranks`）。
+        # 2026-11-19 账户充值后真实冒烟暴露：旧实现发嵌套 `input: {query, documents}`（那是 DashScope
+        # 原生 `/api/v1/services/rerank/...` 的形态），兼容端点回 400 InvalidParameter
+        # `Field required: input.query & Field required: input.documents`。欠费期间只见 Arrearage，
+        # 这点形态错误被掩盖了；故以真实调用为准，并加扁平形态的断言测试（依 3.3 取证方式）。
         payload = {
             "model": self.cfg.rerank_model,
-            "input": {"query": query, "documents": documents},
+            "query": query,
+            "documents": documents,
         }
         last_error: Exception | None = None
         for attempt in range(1, MAX_ATTEMPTS + 1):

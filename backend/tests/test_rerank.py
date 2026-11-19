@@ -74,6 +74,33 @@ def ok_payload(scores: list[float]) -> dict:
     }
 
 
+def test_api_reranker_sends_flat_query_and_documents_body():
+    """OpenAI 兼容 `/reranks` 要扁平的 `model`/`query`/`documents`（真实调用实测，2026-11-19）。
+
+    旧实现发 `{"input": {"query": ..., "documents": ...}}`——那是 DashScope **原生**
+    `/api/v1/services/rerank/...` 的形态。兼容端点对嵌套体返回
+    `HTTP 400 InvalidParameter: Field required: input.query & Field required: input.documents`
+    （账户欠费恢复后的真实冒烟暴露；欠费时只能看到 Arrearage，掩盖了这个错误）。
+    """
+    captured: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        captured.append(json.loads(request.content))
+        return httpx.Response(200, json=ok_payload([0.9, 0.1]))
+
+    reranker = ApiReranker(rerank_cfg(), transport=httpx.MockTransport(handler))
+    scores = reranker.rerank("何时成立", ["甲文档", "乙文档"])
+    assert scores == [0.9, 0.1]
+    assert len(captured) == 1
+    body = captured[0]
+    assert body.get("model") == "qwen3-rerank"
+    assert body.get("query") == "何时成立", "query 必须在顶层，不能在 input 里"
+    assert body.get("documents") == ["甲文档", "乙文档"], "documents 必须在顶层，不能在 input 里"
+    assert "input" not in body, "嵌套 input 是原生端点形态，兼容端点会 400"
+
+
 # ── 尺子隔离（红线 1）────────────────────────────────────────────────────────────────────
 def test_apply_rerank_writes_only_rerank_score():
     """重排分写进 `rerank_score`，`score` / `dense_score` 一个字节不动（4.6）。"""

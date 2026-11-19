@@ -91,7 +91,9 @@ pnpm exec playwright test   # e2e 红线（19 例执行 × desktop/768/375 三�
 **试点边界（演示前必须声明）**：本阶段所有数字来自 20 单元 / 125 卡 / 223 条目的试点语料
 （9 部核心电子书无本地原件），不是全量语料的结果。卡片数已达阶段一退出线 120，但条目 223/400、
 可解析单元 11/50 未达标；全量数字需补采原件后经用户再次授权重跑。阈值可分性「重叠」未达标，
-API 重排因账户欠费未实测——两项均已在 `docs/评测报告.md` 如实记录，不得以试点数字冒充全量验收。
+API 重排已于 2026-11-19 账户充值后补跑真实冒烟并修复请求体形态缺陷（报告「真实 API 重排冒烟」节），
+5 文档 0.81–0.88 s、分数 0.24–0.84、尺子隔离成立——但阈值可分性「重叠」仍未达标，且重排分
+永不参与闸门。两项边界均已在 `docs/评测报告.md` 如实记录，不得以试点数字冒充全量验收。
 
 ### 常用命令（在 `backend/` 下；`cd backend` 必须，仓库根直跑会 ModuleNotFoundError）
 
@@ -129,7 +131,7 @@ embedding 配置（不是 `.env` 写了什么）、重排档可用性、空检�
 | 维度 | 档位 | 切换方式 | 行为 |
 |---|---|---|---|
 | 向量 | `api` / `local` / `stub` | `EMBEDDING_BACKEND` 或 `--embedding-backend` | `api` 走云端 `/embeddings`；`local` 需先 `pip install -e ".[retrieval]"` 并手动取权重；`stub` 无向量、BM25-only |
-| 重排 | `api` / `local_lexical` / `off` | `RERANK_BACKEND` 或 `--rerank-backend` | `api` 走云端 `/reranks`（当前账户欠费，报 400 Arrearage）；`local_lexical` 本地词面重排；`off` 不重排 |
+| 重排 | `api` / `local_lexical` / `off` | `RERANK_BACKEND` 或 `--rerank-backend` | `api` 走云端 `/reranks`（已实测可用：扁平 `query`/`documents` 请求体，5 文档约 0.8s）；`local_lexical` 本地词面重排；`off` 不重排 |
 
 **绝不自动换档**：配置缺 key、依赖或权重时一律显式报错并点名补齐路径，不会静默退回其它档
 （规范 4.13）。降级是默认行为而非异常路径：重排跑不了时按融合顺序返回，并打一行
