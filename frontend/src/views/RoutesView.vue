@@ -202,7 +202,7 @@ onUnmounted(() => {
 <template>
   <section ref="pageRef" class="routes-page" aria-labelledby="routes-title">
     <header class="page-head">
-      <p class="eyebrow">REDTRACE / SCROLL STORY</p>
+      <p class="eyebrow">溯源叙事 · 滚动长卷</p>
       <h1 id="routes-title" class="page-title">重走长征路 / Interactive Route</h1>
       <p class="page-sub">
         沿登记语料中真实出现的地名，逐站展开一段可滚动阅读的长征叙事。
@@ -225,7 +225,7 @@ onUnmounted(() => {
       <!-- 左侧 sticky 地图 -->
       <div ref="mapRef" class="map-frame">
         <div class="map-caption">
-          <span class="caption-kicker">ROUTE TRACE</span>
+          <span class="caption-kicker">路线轨迹</span>
           <strong>{{ stops[activeIndex]?.name }}</strong>
           <span class="caption-id tabular">{{ stops[activeIndex]?.sourceId }}</span>
         </div>

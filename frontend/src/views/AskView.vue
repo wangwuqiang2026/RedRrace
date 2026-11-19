@@ -196,7 +196,7 @@ const registeredCount = computed<number | null>(() => null)
   letter-spacing: 0.18em;
   color: var(--dm-cyan);
 }
-.console-eyebrow::after { content: 'TRACE / QUERY CONSOLE'; }
+.console-eyebrow::after { content: '溯源查询控制台'; }
 .console-title {
   margin: 0;
   font-family: var(--dm-font-display);

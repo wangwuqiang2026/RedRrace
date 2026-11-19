@@ -152,9 +152,9 @@ function clip(text: string, max = 28): string {
   color: var(--dm-cyan);
 }
 /* 英文小字标签由伪元素呈现：保持视觉规格原文，同时不进入 A4 可见文本检测 */
-.eyebrow-radar::after { content: 'RETRIEVAL RADAR'; }
-.eyebrow-gate::after { content: 'EVIDENCE GATE'; }
-.eyebrow-chain::after { content: 'EVIDENCE CHAIN'; }
+.eyebrow-radar::after { content: '检索雷达'; }
+.eyebrow-gate::after { content: '闸门仪表'; }
+.eyebrow-chain::after { content: '证据链'; }
 /* ① 雷达 */
 .radar-wrap {
   position: relative;
