@@ -85,3 +85,83 @@ pnpm exec playwright test   # e2e 红线（19 例执行 × desktop/768/375 三�
 - `src/components/` —— SourceCard / ConflictPair / CitationMark / RefusalNotice（+PhaseEmptyState）。
 - `src/styles/tokens.css` —— 设计 token 唯一色值来源；组件内禁止硬编码色值（扫描测试覆盖 src+public+index.html 全检测面）。
 - `tests/` —— vitest 套件与 fixtures；`tests/e2e/` —— Playwright 红线；`tests/lib/css-audit.ts` —— 与 visual-qa 变异样本回归共用的实现。
+
+## 阶段二 检索层（2026-11-18/19）
+
+**试点边界（演示前必须声明）**：本阶段所有数字来自 20 单元 / 125 卡 / 223 条目的试点语料
+（9 部核心电子书无本地原件），不是全量语料的结果。卡片数已达阶段一退出线 120，但条目 223/400、
+可解析单元 11/50 未达标；全量数字需补采原件后经用户再次授权重跑。阈值可分性「重叠」未达标，
+API 重排因账户欠费未实测——两项均已在 `docs/评测报告.md` 如实记录，不得以试点数字冒充全量验收。
+
+### 常用命令（在 `backend/` 下；`cd backend` 必须，仓库根直跑会 ModuleNotFoundError）
+
+```powershell
+cd backend
+
+# 1) 建索引（api 档走 Config 的 EMBEDDING_BACKEND；--rebuild 强制全量重建）
+python scripts/build_index.py --rebuild
+# 无 key / 离线演练：不下载任何权重，退化为 BM25-only，产物不得用于达标判定
+python scripts/build_index.py --embedding-backend stub --rebuild
+
+# 2) 三指标评测（只跑检索，零 token 成本）
+python scripts/eval_retrieval.py
+python scripts/eval_retrieval.py --minimal        # 含摊薄对照（迷你库）
+python scripts/eval_retrieval.py --rrf 20          # 融合常数扫档
+
+# 3) 拒答阈值标定（扫 0.40–0.60，写 data/index/threshold.json）
+python scripts/eval_retrieval.py --calibrate
+
+# 4) 切块扫档（merged 档需单独索引目录；定稿 single）
+python scripts/build_index.py --out data/index-merged --block-mode merged --rebuild
+python scripts/eval_retrieval.py --out data/index-merged --block-mode merged
+
+# 5) 门禁
+python -m ruff check .
+python -m pytest -q        # 558 passed（2026-11-19）
+```
+
+`build_index.py` 自检会打印六件事：条目/向量/倒排是否一致、两条通道各自命中数、实际生效的
+embedding 配置（不是 `.env` 写了什么）、重排档可用性、空检索串计数、两个指纹与阈值标定条件。
+任一侧声明可用却零命中 → 退出码 2，不落半套索引（stub 档稠密为 0 属合法降级，不算故障）。
+
+### 三档切换与降级日志
+
+| 维度 | 档位 | 切换方式 | 行为 |
+|---|---|---|---|
+| 向量 | `api` / `local` / `stub` | `EMBEDDING_BACKEND` 或 `--embedding-backend` | `api` 走云端 `/embeddings`；`local` 需先 `pip install -e ".[retrieval]"` 并手动取权重；`stub` 无向量、BM25-only |
+| 重排 | `api` / `local_lexical` / `off` | `RERANK_BACKEND` 或 `--rerank-backend` | `api` 走云端 `/reranks`（当前账户欠费，报 400 Arrearage）；`local_lexical` 本地词面重排；`off` 不重排 |
+
+**绝不自动换档**：配置缺 key、依赖或权重时一律显式报错并点名补齐路径，不会静默退回其它档
+（规范 4.13）。降级是默认行为而非异常路径：重排跑不了时按融合顺序返回，并打一行
+`重排未生效: <原因>`。库内用 `logger.warning("重排未生效: %s", reason)`，默认不输出到终端：
+需要看到这行时，在调用方（CLI / 装配层）配置 logging，例如：
+
+```python
+import logging
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+```
+
+或在 `backend/.env` / 运行命令里把日志级别调到 WARNING（具体装配点见阶段三接入时的 `app/main.py`）。
+`build_index.py` 的自检行 `重排档=...` 会直接打印到 stdout，无需配日志即可判断这一档是否生效。
+
+### 索引过期与阈值过期
+
+- 索引双指纹：**语料指纹**（卡片/条目变更即变）+ **向量配置签名**（模型 + 维度 + 基址哈希 +
+  `text_type` 两侧组合，任一变更即变）。`ensure_ready()` 比对不一致时抛 `IndexStaleError` /
+  `IndexNotBuiltError`，CLI 提示重建：`python scripts/build_index.py --rebuild`。
+- 阈值文件 `data/index/threshold.json` 自带标定条件（语料指纹、向量签名、rrf 常数、
+  稠密/稀疏 top、block_mode、top_k、生成时间）。换索引或换配置后 `calibrated_threshold()` 抛
+  `ThresholdStaleError` → 必须重跑 `python scripts/eval_retrieval.py --calibrate`，不得沿用旧 tau。
+- 重排分永不参与闸门：`Hit.score` 是唯一跨请求可比的相似度尺子，`Hit.rerank_score` 只参与排序；
+  无分数是 `None`（不是 -1 或 0.0），`0.0` 是合法低分（R12）。
+
+### 阶段一抽取路径的两条现行口径（T1.5 修复后）
+
+1. `--dry-run` 现在**零 LLM 调用**：旧实现 dry-run 仍全额调抽取模型（20 分钟无输出），修复后
+   同命令降到 0.37s；dry-run 返回的是解析/切块结果，不是抽取结果。
+2. 换供应商时必须逐项确认 `enable_thinking` 参数：供应商缺省开推理会让请求 140.5s 撞超时；
+   显式携带该字段后 9.8s（`LLM_TIMEOUT_S=300` 保持模块常量，R21）。这不是可移植默认值，
+   换模型/换网关须重测并在决策记录 007 第五节留痕。
+
+复现与数字口径见 `docs/评测报告.md`；阶段二裁决与进度台账见 `.superpowers/sdd/plan/progress.md`
+（工作区临时文件，长期留档需用户同意）。
