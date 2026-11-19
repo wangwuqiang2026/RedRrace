@@ -16,6 +16,7 @@
     "gen:api": "openapi-typescript ../backend/openapi.json -o src/api/types.ts"
   },
   "dependencies": {
+    "gsap": "^3.15.1",
     "pinia": "^3.0.4",
     "vue": "^3.5.45",
     "vue-router": "^4.6.4"

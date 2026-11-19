@@ -88,4 +88,22 @@
   /* —— 已登记但未落地的 token 注记（M-2/lead 口径）——
    * `--pending-line`（#A9824A，年代待考区左缘竖线）已按规范 F4 修订登记入 §3.3；
    * 壳阶段无使用场景，按 lead 指令不落本文件，阶段五时间轴接入时再添加（仅图形线，禁作文字前景）。 */
+
+  /* —— 深色动效主题（改造新增）—— */
+  --dm-bg: #0A0E1A;
+  --dm-bg-elev: #121829;
+  --dm-bg-glass: rgba(255,255,255,0.04);
+  --dm-line: rgba(255,255,255,0.10);
+  --dm-ink: #E8ECF4;
+  --dm-ink-dim: #94A0B8;
+  --dm-red: #FF4D4F;
+  --dm-red-dim: #C9383A;
+  --dm-amber: #F5A623;
+  --dm-cyan: #4DD8E8;
+  --dm-green: #3DD68C;
+  --dm-glow-red: rgba(255,77,79,0.35);
+  --dm-glow-amber: rgba(245,166,35,0.30);
+  --dm-font-display: 'Noto Serif SC', 'Songti SC', serif;
+  --dm-shadow: 0 18px 48px rgba(0,0,0,0.45);
+  --dm-radius: 12px;
 }

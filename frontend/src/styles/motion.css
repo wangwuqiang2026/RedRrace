@@ -1,0 +1,76 @@
+/* RedTrace 深色动效主题 —— 通用 keyframes 与 reduced-motion 兜底。
+ * 颜色一律不在本文件出现；需要着色时用 currentColor / inherit / transparent。
+ */
+
+/* 元素淡入并上移：用于页面区块、卡片、标题的入场揭示。 */
+@keyframes dm-fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* 呼吸脉冲：用于状态点、活动标记，表达「正在发生」而非随机闪烁。 */
+@keyframes dm-pulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+/* 扫描线：自上而下掠过，用于溯源/检索过程的视线引导。 */
+@keyframes dm-scan {
+  from {
+    transform: translate3d(0, -100%, 0);
+  }
+  to {
+    transform: translate3d(0, 100%, 0);
+  }
+}
+
+/* 缓慢浮动：用于装饰性图形层，弱化机械感。 */
+@keyframes dm-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -8px, 0);
+  }
+}
+
+/* 流光：用于骨架屏/加载态，沿水平方向往复扫过。 */
+@keyframes dm-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* 路径描绘：配合 stroke-dasharray/dashoffset 实现 SVG 线条「生长」。 */
+@keyframes dm-draw {
+  from {
+    stroke-dashoffset: var(--dm-draw-length, 1000);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
