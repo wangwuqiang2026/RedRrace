@@ -28,10 +28,13 @@ describe('七页路由骨架', () => {
     expect(router.currentRoute.value.path).toBe('/ask')
   })
 
+  // Task 4 已完成 /cards、/timeline、/map 三页，启用其标题断言；
+  // /routes、/lesson-pack、/audit 仍由 Task 5/6 实现后启用。
+  const ENABLED = new Set(['/cards', '/timeline', '/map'])
   for (const [path, title] of Object.entries(TITLES)) {
     if (!title) continue
-    // temporarily skipped：Tasks 4-6 页面尚未实现，标题断言届时会变绿，由 lead 统一启用。
-    it.skip(`${path} 显示新页面标题「${title}」`, async () => {
+    const run = ENABLED.has(path) ? it : it.skip
+    run(`${path} 显示新页面标题「${title}」`, async () => {
       await router.push(path)
       const w = mount(App, { global: { plugins: [router] } })
       await flushPromises()
