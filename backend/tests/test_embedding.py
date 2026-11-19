@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import importlib.machinery
 import json
 import math
 import sys
@@ -245,6 +246,28 @@ def test_embedder_rejects_non_numeric_component():
         embedder.embed_documents(["某条检索串"])
 
 
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"], ids=["nan", "inf", "neg_inf"])
+def test_embedder_rejects_non_finite_component(token):
+    """NaN/Inf 分量会穿过五项断言：HTTP 200、条数/维度对、非空、不全零，但 cos 变 NaN（I-2）。
+
+    用 `httpx.Response(content=...)` 而不是 `json=...`：httpx 默认 `allow_nan=False` 会在替身里
+    先抛 ValueError，那样测的就是替身而不是生产代码（评审 task2-verdict.md I-2 的取证提示）。
+    """
+    vec = vector()
+    vec[5] = float(token)
+    payload = json.dumps({"data": [{"index": 0, "embedding": vec}], "usage": {"total_tokens": 3}})
+    # json.dumps 默认也输出 NaN/Infinity 字面量（allow_nan=True），正是要模拟的网关透传形态。
+    body = payload.replace("NaN", "NaN").replace("Infinity", "Infinity")
+
+    def bad_finite(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body.encode("utf-8"), headers={"content-type": "application/json"})
+
+    embedder = ApiEmbedder(cfg(), transport=httpx.MockTransport(bad_finite))
+    with pytest.raises(EmbeddingResponseError, match="不是有限数值") as exc:
+        embedder.embed_documents(["某条检索串"])
+    assert "[5]" in str(exc.value), "必须点名是哪一条的第几个分量（依 4.14 措辞分道）"
+
+
 # ── 断言③：无空数组（规范 4.4-③，步骤 3b 逐字测试形态）────────────────────────────────
 def test_embedder_rejects_silent_empty_vectors():
     """官方明示兼容接口传 `output_type=sparse` 时「返回 HTTP 200，但 embedding 结果为空」（005 §7.3-3）。
@@ -322,6 +345,26 @@ def test_blank_query_is_rejected_before_any_request():
     with pytest.raises(ValueError, match="空或纯空白"):
         embedder.embed_query("   ")
     assert rec.calls == 0
+
+
+def test_empty_input_list_is_rejected_not_reported_as_dense_available():
+    """空列表不能返回 `vectors=[] + dense_available=True`（I-4，规范 4.12/8.15）。
+
+    T3 按 claim 拼装检索串时若上游过滤成空集（空库 / `--rebuild` 打到空表），当前实现
+    批循环 `range(0,0,size)` 不产生批次，返回「成功」但零向量：索引建成空表却报告稠密可用，
+    与 8.15「禁止空索引静默返回 0 条再落进拒答」同族。措辞须与空白串分道（4.14）。
+    """
+    embedder, rec = api_with()
+    with pytest.raises(ValueError, match="检索串集合为空") as exc:
+        embedder.embed_documents([])
+    assert rec.calls == 0, "空列表应在发送前就被拦住（5.18）"
+    assert "空或纯空白" not in str(exc.value), "空列表与空白串是两种成因，措辞须分道（4.14）"
+
+
+def test_stub_also_rejects_empty_input_list():
+    """降级线同样不能把「没有东西可索引」伪装成成功（I-4，规范 4.12）。"""
+    with pytest.raises(ValueError, match="检索串集合为空"):
+        StubEmbedder().embed_documents([])
 
 
 def test_batch_order_is_preserved_and_duplicates_kept():
@@ -497,6 +540,28 @@ def test_token_estimate_never_undercounts_either_script():
     assert estimate_tokens("") == 0, "空串的拦截由断言④负责，估算本身给 0 而不是报错"
 
 
+def test_token_estimate_counts_cjk_punctuation_fullwidth_and_kana_as_one_each():
+    """中文标点、全角拉丁、假名都按一字一 token 计——这是引文混排串的主形态（I-1）。
+
+    检索串由「卡片名 + 谓词 + 取值 + 原文引文」拼成，引文必带中文标点。旧口径把 `
+    ，。、《》「」；：？！（）…—` 与全角/假名塞进「每 4 字符 1 token」支，
+    混排串的估算甚至低于纯汉字串（评审实测 109,275 < 94,000+标点），
+    客户端放行 → 服务端整批 400、count=0（007 三-3）。
+    """
+    punctuation = "，。、《》「」；：？！（）…—"
+    assert estimate_tokens(punctuation) == len(punctuation), "中文标点须一字一 token，不得落进 4:1 支"
+    fullwidth = "ＡＢＣＤＥ"
+    assert estimate_tokens(fullwidth) == len(fullwidth), "全角拉丁须一字一 token"
+    hiragana = "あなたは日本語を勉強しています"
+    assert estimate_tokens(hiragana) == len(hiragana), "平假名须一字一 token"
+    katakana = "カタカナ"
+    assert estimate_tokens(katakana) == len(katakana), "片假名须一字一 token"
+
+    # 主形态：汉字 + 中文标点的引文串——估算必须等于总字符数，不得被标点拉低 4 倍。
+    quote = "讲习所，成立于一九二五年。" * 100
+    assert estimate_tokens(quote) == len(quote), "引文混排串一字一 token，估算不得被标点拉低"
+
+
 def test_precheck_blocks_a_batch_at_the_configured_line_not_beyond_it():
     """具体危害用例：只要有一条估算越过配置线就必须拦住，且一次请求都不发（依 4.5、5.18）。
 
@@ -605,6 +670,7 @@ def test_local_embedder_reports_missing_weights_not_falling_back(tmp_path, monke
             raise OSError(f"无法加载权重：{name_or_path}")
 
     fake_module = types.ModuleType("sentence_transformers")
+    fake_module.__spec__ = importlib.machinery.ModuleSpec("sentence_transformers", loader=None)  # type: ignore[attr-defined]
     fake_module.SentenceTransformer = FakeModel  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
     with pytest.raises(RuntimeError, match="权重") as exc:
@@ -616,10 +682,24 @@ def test_local_embedder_reports_missing_weights_not_falling_back(tmp_path, monke
 def test_local_embedder_requires_model_config(monkeypatch):
     """local 档的 EMBEDDING_MODEL 承载权重目录；留空时连「该加载什么」都不知道，必须构造期报错。"""
     fake_module = types.ModuleType("sentence_transformers")
+    fake_module.__spec__ = importlib.machinery.ModuleSpec("sentence_transformers", loader=None)  # type: ignore[attr-defined]
     fake_module.SentenceTransformer = lambda name: None  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
     with pytest.raises(RuntimeError, match="EMBEDDING_MODEL"):
         LocalEmbedder(cfg(embedding_model=""))
+
+
+def test_injected_loader_does_not_bypass_optional_dependency_check(monkeypatch):
+    """即使注入 loader，缺可选依赖仍须显式报错（I-3，规范 8.3/4.13）。
+
+    注入点存在的目的是「装了依赖但权重没下载」分支能不联网测到（5.17）；它不该让生产调用方
+    在没有任何 sentence-transformers 的机器上把 local 档装作可用，直到 _encode 深处抛
+    AttributeError。当前实现 `loader if loader is not None else self._load_sentence_transformer()`
+    把依赖检查放在 else 支里，给了 loader 就整段跳过——实测构造成功（评审 I-3）。
+    """
+    monkeypatch.setitem(sys.modules, "sentence_transformers", None)
+    with pytest.raises(ImportError, match=r"\[retrieval\]"):
+        LocalEmbedder(cfg(), loader=lambda name: object())
 
 
 # ── 档位选择：build_embedder 只做显式分发，不看有没有 key（规范 4.13）─────────────────────
@@ -694,10 +774,16 @@ def test_stub_signature_is_marked_no_vector_so_bm25_only_cannot_be_confused():
     assert sig.model == "none" and sig.dim == 0
 
 
-def test_local_signature_marks_text_type_undeclared():
+def test_local_signature_marks_text_type_undeclared(monkeypatch):
     """LocalEmbedder（bge-m3）无 text_type 参数（007 第四节末条）：签名记「未声明」，
     使「本地档建的索引被 API 档阈值判定」这种跨档混用在签名层面就不同构。
+
+    I-3 之后注入 loader 也必须过依赖守卫：这里先用假模块替身表示「已装 extra」（规范 5.17），
+    loader 只用于避免真的下载权重，不能顺带绕过依赖前提。
     """
+    fake_module = types.ModuleType("sentence_transformers")
+    fake_module.__spec__ = importlib.machinery.ModuleSpec("sentence_transformers", loader=None)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
     embedder = LocalEmbedder(cfg(), loader=lambda name: object())
     sig = embedder.vector_signature()
     assert sig.backend == "local"
@@ -842,14 +928,16 @@ def test_no_real_network_transport_in_this_file():
 
 # ── 可复现性判据：按 cos 阈值，不按逐位相等（规范 4.10、5.10）────────────────────────────
 def test_cosine_reproducibility_is_judged_by_threshold_not_bitwise():
-    """规范 4.10 / 5.10：可复现性按 cos ≥ 0.999 判。
+    """规范 4.10 / 5.10 + R18：可复现性按 cos ≥ 0.998 判。
 
     这条测试的作用是把「判据」本身钉进代码库：T3/T5 若写逐位相等的断言，
-    评审能拿本函数与注释说明为什么那样写会随机假红（实测 cos=0.999095）。
+    评审能拿本函数与注释说明为什么那样写会随机假红（007 六-1 读数 0.999095，
+    T2 真实冒烟读数 0.998869；取 0.999 会随机假红，故 R18 定为 0.998）。
     """
+    threshold = 0.998
     a, b, c = [1.0, 0.0], [0.99995, 0.0099], [0.0, 1.0]
-    assert cosine(a, b) >= 0.999, "近重合向量应判为可复现"
-    assert cosine(a, c) < 0.999, "正交向量不得被判为可复现（阈值放宽成永真即失去意义）"
+    assert cosine(a, b) >= threshold, "近重合向量应判为可复现"
+    assert cosine(a, c) < threshold, "正交向量不得被判为可复现（阈值放宽成永真即失去意义）"
     assert math.isclose(cosine(a, a), 1.0, abs_tol=1e-12)
 
 

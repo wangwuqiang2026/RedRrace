@@ -30,10 +30,12 @@ T3（`local.py` / `scripts/build_index.py`）消费本模块两样东西：
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import logging
 import math
 import re
+import sys
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -66,9 +68,24 @@ STUB_SIGNATURE_PREFIX = "no-vector"
 # 近似 token 口径的拉丁文除数（docstring 见 estimate_tokens：这是客户端保守估算，不是服务端口径）。
 _LATIN_CHARS_PER_TOKEN = 4
 
-# CJK 字符类：基本区 + 扩展 A 区 + 兼容表意区。为什么不写 `\w`：那会把拉丁字母一并算成
-# 「一字一 token」，让英文检索串的估算值虚高到不可用；本函数只对 CJK 采用最保守的一字一 token。
-_CJK_RE = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
+# 「按字符计费」的字符类：汉字各区 + CJK 标点 + 假名 + 全角/半宽 + 通用标点。
+# 为什么不写 `\w`：那会把拉丁字母一并算成「一字一 token」，让英文检索串的估算虚高到不可用。
+# 2026-11-18 I-1 扩区（评审 task2-verdict.md I-1、规范 4.5/3.3）：旧口径只覆盖汉字三区，
+# 中文标点（，。、《》、…—）、全角拉丁（ＡＢＣＤ）与假名都落进「每 4 字符 1 token」支；
+# 检索串的主形态是「卡片名 + 谓词 + 取值 + 原文引文」，引文必带中文标点，混排串的估算
+# 反而低于纯汉字串（评审实测 109,275 < 真实 ≥155,100）→ 客户端放行 → 服务端整批 400、count=0
+# （007 三-3）。BPE 对这些字符普遍 1 token/字符甚至更多，故一律按 1 计，只朝不低估的方向取。
+_CJK_RE = re.compile(
+    "["
+    "\u2000-\u206f"  # 通用标点（… —）
+    "\u3000-\u303f"  # CJK 符号与标点（。，、《》「」；：？！中的全角形式）
+    "\u3040-\u30ff"  # 平假名 + 片假名
+    "\u3400-\u4dbf"  # CJK 扩展 A
+    "\u4e00-\u9fff"  # CJK 基本区
+    "\uf900-\ufaff"  # CJK 兼容表意
+    "\uff00-\uffef"  # 全角 / 半宽形式（ＡＢＣＤ、；：？！（））
+    "]"
+)
 
 
 # ── 产出物 ──────────────────────────────────────────────────────────────────────────────
@@ -147,8 +164,8 @@ def estimate_tokens(text: str) -> int:
     """发送前的**近似** token 计数，用于逐条预检（依 4.5：超限即拦，不得静默截断）。
 
     口径（务必别当成服务端口径，规范 3.3 要求标注取证方式）：
-    - CJK 统一表意文字（含扩展 A 区与兼容区）按每字 1 token；
-    - 其余字符按每 `_LATIN_CHARS_PER_TOKEN`=4 个字符 1 token 向上取整。
+    - CJK 汉字（基本区 / 扩展 A / 兼容区）、中文标点、假名、全角/半宽字符按每字符 1 token（见 `_CJK_RE`）；
+    - 其余（主要是拉丁字母、数字、ASCII 标点）按每 `_LATIN_CHARS_PER_TOKEN`=4 个字符 1 token 向上取整。
     本机无 `tiktoken`，也不为本任务引入新依赖（brief 禁止事项 + 规范 8.3 的最小依赖纪律），
     故取可解释的启发式而非厂商分词器。
 
@@ -176,12 +193,19 @@ def estimate_tokens(text: str) -> int:
 
 
 def _reject_blank_inputs(texts: list[str], side: str) -> None:
-    """断言④：空串 / 纯空白文本在客户端先拒（依 4.4-④、007 六-2）。
+    """断言④ + I-4：空集合 / 空串 / 纯空白文本在客户端先拒（依 4.4-④、007 六-2、4.12、8.15）。
 
     实测 `input=[""]` 返回 HTTP 200 且 1024 个分量全非零——服务端「垃圾进、正常出」，
     所以「无空数组」那条断言防不住这种形态，必须在入口拦。
+    空集合是另一族事故（I-4）：批循环 `range(0,0,size)` 不产生批次，却返回 `dense_available=True`
+    的空向量列表，让空索引冒充成功。两种成因措辞分道（依 4.14）。
     报错用 ValueError（依 4.2：入参不合法归 ValueError），并点名是哪一条、哪一侧。
     """
+    if not texts:
+        raise ValueError(
+            f"{side} 侧检索串集合为空：没有东西可进索引（依 4.12、8.15）。"
+            "请先确认语料查询为何返回 0 条，不要用空结果冒充稠密通道可用。"
+        )
     bad = [i for i, t in enumerate(texts) if not isinstance(t, str) or not t.strip()]
     if bad:
         raise ValueError(
@@ -527,6 +551,15 @@ class ApiEmbedder:
                         f"向量响应不完整：第 [{i}] 条第 [{j}] 个分量不是数值（{v!r}），"
                         "下游点积会以裸 TypeError 中止（依 4.14 要能分辨成因）"
                     )
+                # I-2（评审 task2-verdict.md）：JSON 的 NaN/Infinity 字面量 Python json 默认接受，
+                # 五项断言全部通过却产出不可用向量（cos 为 NaN → 所有阈值比较恒 False，
+                # 最坏情况是闸门「无从判断」而放行）。这里按 4.4 补上分量有限性校验，
+                # 措辞与「不是数值」分道（4.14），并点名条号/分量号便于定位。
+                if not math.isfinite(v):
+                    raise EmbeddingResponseError(
+                        f"向量响应不完整：第 [{i}] 条第 [{j}] 个分量不是有限数值（NaN/Inf，收到 {v!r}），"
+                        "依 4.4/8.13：此类分量参与余弦会让比较恒 False，不得混入索引。"
+                    )
                 clean.append(float(v))
             # 全零检查（规范 5.10 允许的四类断言之列）：0 向量 cos 恒为 0，会被阈值标定当成真实负例。
             if all(x == 0.0 for x in clean):
@@ -564,7 +597,16 @@ class LocalEmbedder:
                 "LocalEmbedder 需要 EMBEDDING_MODEL 指定本地权重目录或标识符；该项为空。"
                 "请补齐 backend/.env（参考 backend/.env.example），向量后端不会自动切换。"
             )
-        load = loader if loader is not None else self._load_sentence_transformer()
+        # I-3（评审 task2-verdict.md）：依赖检查在两条路径都要过一遍。原先只在 else 支检查，
+        # 传入 loader 的调用方可以静默跨过「装了 extra 才能用」这条纪律（规范 8.3/4.13）：
+        # 生产调用方若注入 loader，会在没有 sentence-transformers 的机器上装作可用，
+        # 直到 _encode 深处抛 AttributeError。注入点只用于「依赖在、权重没下载」的测试分支（5.17），
+        # 不能成为绕过依赖前提的后门。
+        if loader is None:
+            load = self._load_sentence_transformer()
+        else:
+            self._assert_optional_dependency_present()
+            load = loader
         try:
             self._model = load(cfg.embedding_model)
         except Exception as exc:  # 权重加载失败原因多样（缺文件/校验和不符/内存不足），一律归为配置类 RuntimeError
@@ -578,15 +620,33 @@ class LocalEmbedder:
         self.cfg = cfg
 
     @staticmethod
-    def _load_sentence_transformer():
-        try:
-            from sentence_transformers import SentenceTransformer
-        except ImportError as exc:
+    def _assert_optional_dependency_present() -> None:
+        """两条构造路径共用的依赖守卫（I-3）：缺 sentence-transformers 即点名安装命令（规范 2.18/8.3）。
+
+        单独抽成方法是为了让「注入 loader」与「真实加载」走同一句措辞（依 4.14 同族故障同提示），
+        不许出现「注入路径就默默放宽」的分支。
+        """
+        # sys.modules[name] = None 是测试里屏蔽可选依赖的标准做法（monkeypatch.setitem），
+        # 此时 find_spec 会因 __spec__ is None 抛 ValueError，而真实缺失是返回 None；
+        # 两种形态都按「依赖缺失」处理（规范 5.17 的测试替身纪律不能反过来破坏守卫）。
+        present = sys.modules.get("sentence_transformers", "SENTINEL") is not None
+        if present:
+            try:
+                present = importlib.util.find_spec("sentence_transformers") is not None
+            except (ImportError, AttributeError, ValueError):
+                present = False
+        if not present:
             raise ImportError(
                 'LocalEmbedder 需要可选依赖 sentence-transformers：请执行 pip install -e ".[retrieval]"'
                 "（决策记录 005 第五节的回滚路径）。本阶段默认不安装该 extra、不下载权重（规范 8.3），"
                 "因此该档在当前环境本就不可用；请显式改用 api 或 stub 档，向量后端不会自动切换。"
-            ) from exc
+            )
+
+    @staticmethod
+    def _load_sentence_transformer():
+        LocalEmbedder._assert_optional_dependency_present()
+        from sentence_transformers import SentenceTransformer
+
         return SentenceTransformer
 
     @property
@@ -700,7 +760,11 @@ class StubEmbedder:
         return self._result(1)
 
     def _result(self, n: int) -> EmbeddingResult:
-        logger.info("抽取/检索后端=stub，不得用于达标判定（依 4.3、cli.py:14 同一口径）")
+        # 带上条数：降级演练的日志要能说清「多少条退化为 BM25-only」（评审 M-2）。
+        logger.info(
+            "抽取/检索后端=stub，本批 %d 条退化为 BM25-only，不得用于达标判定（依 4.3、cli.py:14 同一口径）",
+            n,
+        )
         return EmbeddingResult(
             vectors=[],
             backend_name="stub",
@@ -772,10 +836,15 @@ def build_embedder(config: Config | None = None, **kwargs: Any) -> ApiEmbedder |
 def cosine(a: list[float], b: list[float]) -> float:
     """余弦相似度，供「可复现性按 cos 阈值判」一类核对使用（依 4.10、5.10）。
 
-    为什么单独提供这支函数并把全零当作错误：规范 4.10 规定索引可复现只能按 cos ≥ 0.999 判
-    （实测同参数两次调用 cos=0.999095，服务端存在非确定性），逐位相等的断言会随机假红。
+    为什么单独提供这支函数并把全零当作错误：规范 4.10 规定索引可复现只能按 cos ≥ 0.998 判
+    （R18：007 六-1 旧读数 0.999095、T2 真实冒烟读数 0.998869，同一部署存在波动，
+    取 0.999 会随机假红），逐位相等的断言同理。
     全零向量分母为 0，返回 0.0 会让人误判「不可复现」，而真相是「这条向量压根没方向」，
     故显式报错而不是给出一个好看的数（依 8.13 不得静默放行）。
+
+    **值域是 [-1, 1]，不是 [0, 1]**（评审 task2-verdict.md M-4）：反向向量得 -0.999…，
+    `Hit.dense_score/score` 契约要求 [0, 1]（依 D4），调用方写入 Hit 前须按 007 口径映射/裁剪；
+    本函数只负责「供复现核对」，不替调用方做有语义的归一化（否则掩盖真实夹角）。
     """
     if len(a) != len(b):
         raise ValueError(f"cosine 需要等长向量，收到 {len(a)} 与 {len(b)}（依 4.4-② 同源：维度不符即错）")
