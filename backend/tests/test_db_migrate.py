@@ -58,12 +58,13 @@ def test_schema_version_is_recorded(tmp_path):
     migrate(db)
     with sqlite3.connect(db) as conn:
         versions = [row[0] for row in conn.execute("SELECT version FROM schema_version ORDER BY version")]
-    assert versions == [SCHEMA_VERSION]
+    # 每个已应用版本各留一条记录（阶段三新增 V2，故现在是 [1,2] 而不是只有最终版本）
+    assert versions == list(range(1, SCHEMA_VERSION + 1))
     # 再跑一次不得重复登记版本
     migrate(db)
     with sqlite3.connect(db) as conn:
         versions = [row[0] for row in conn.execute("SELECT version FROM schema_version")]
-    assert len(versions) == 1
+    assert len(versions) == SCHEMA_VERSION
 
 
 def test_source_table_carries_nine_columns_plus_whitelist_three(tmp_path):

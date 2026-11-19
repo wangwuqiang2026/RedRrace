@@ -11,9 +11,9 @@ import sqlite3
 from pathlib import Path
 
 from app.core.config import get_config
-from app.db.models import V1_STATEMENTS
+from app.db.models import V1_STATEMENTS, V2_STATEMENTS
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # plan 阶段一「接口约定」里那张七表清单的英文名，测试据此断言没有漏表
 EXPECTED_TABLES = frozenset(
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 """
 
 # 迁移脚本按版本号追加；改表只能新增版本，不要回改历史版本的内容
-MIGRATIONS: dict[int, tuple[str, ...]] = {1: V1_STATEMENTS}
+MIGRATIONS: dict[int, tuple[str, ...]] = {1: V1_STATEMENTS, 2: V2_STATEMENTS}
 
 
 def default_db_path() -> Path:

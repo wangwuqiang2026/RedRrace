@@ -131,3 +131,11 @@ V1_STATEMENTS: tuple[str, ...] = (
     ROUTES_DDL,
     *CLAIMS_INDEX_DDL,
 )
+
+# V2（阶段三步骤 5b-2）：拒答可审计的四列。只新增列，不改 V1 任何字段含义（D6 注释纪律）。
+V2_STATEMENTS: tuple[str, ...] = (
+    "ALTER TABLE qa_logs ADD COLUMN retrieved_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE qa_logs ADD COLUMN top_score REAL",
+    "ALTER TABLE qa_logs ADD COLUMN threshold REAL",
+    "ALTER TABLE qa_logs ADD COLUMN gate_note TEXT NOT NULL DEFAULT ''",
+)
