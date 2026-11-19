@@ -68,6 +68,20 @@ def test_missing_source_text_fails_closed():
     assert result.dropped[0].verdict is Verdict.QUOTE_NOT_FOUND
 
 
+def test_source_texts_keyed_by_claim_id_not_reference_index():
+    """source_texts 的键是 claim_id（pipeline 按 claim_id 现算），不是引用序号 [n]（smoke 实测缺口）。
+
+    真实语料里 claim_id=150 但它是第 [1] 条证据；旧实现用 `source_texts.get(1)` 查，查不到 →
+    引文逐字定位误判、真模型答案全被剔除。
+    """
+    evidence = [ev(claim_id=150, quote="自1934年10月起各路红军开启战略大转移。", subject="各路红军")]
+    result = verify_answer(
+        "各路红军自1934年10月起开启战略大转移[1]。", evidence,
+        source_texts={150: "原文：自1934年10月起各路红军开启战略大转移。结尾"},
+    )
+    assert len(result.kept) == 1, f"按 claim_id 取原文应通过，实际 {result.dropped}"
+
+
 # ── 第三层：主体一致 ──────────────────────────────────────────────────────────────────
 def test_subject_mismatch_is_dropped():
     """答案句主语与条目主体不一致（讲甲却引乙）→ 剔除。"""

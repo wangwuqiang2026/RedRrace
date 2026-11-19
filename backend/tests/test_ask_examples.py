@@ -148,6 +148,47 @@ def test_v2_migration_adds_audit_columns(tmp_path):
     assert current_version(db) == 2
 
 
+def test_source_texts_use_full_text_not_block_fragments(tmp_path):
+    """parsed 产物有 full_text（完整原文）：逐字定位必须读它，不能只用 blocks 拼（smoke 实测缺口）。
+
+    真实数据里引文「自1934年10月起…」在 full_text 里命中，但按 blocks[].text 拼接后丢失
+    （块边界切断），导致第二层校验误判 quote_not_found、真模型答案被全部剔除→永远拒答。
+    """
+    import json
+
+    from app.qa.pipeline import _load_source_texts
+
+    parsed = tmp_path / "parsed"
+    parsed.mkdir()
+    (parsed / "S001.json").write_text(
+        json.dumps({
+            "source_id": "S001",
+            "full_text": "开头。自1934年10月起，各路红军被迫相继开启战略大转移。结尾。",
+            "blocks": [{"text": "开头。"}, {"text": "结尾。"}],  # 故意不含引文
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    texts = _load_source_texts([_evidence_for_source("S001")], tmp_path)
+    assert texts is not None and 1 in texts
+    assert "自1934年10月起，各路红军被迫相继开启战略大转移" in texts[1]
+
+
+def _evidence_for_source(sid: str):
+    from app.qa.evidence import Evidence
+    from app.qa.schemas import Locator, SourceOut
+
+    src = SourceOut(
+        source_id=sid, title="校史", publisher="人民出版社", publish_date="1985",
+        url_or_path="data/raw/articles/S001.html", access_date="2026-11-13",
+        license_note="公开", corpus_tier="核心", media_type="文章",
+    )
+    return Evidence(
+        claim_id=1, card_id=1, source_id=sid, subject="某校", predicate="创设时间",
+        value="一九二五年", quote="自1934年10月起，各路红军被迫相继开启战略大转移", score=0.8,
+        source=src, locator=Locator(quote="自1934年10月起，各路红军被迫相继开启战略大转移"),
+    )
+
+
 def test_pipeline_upgrades_legacy_v1_db_before_writing_logs(tmp_path):
     """真实试点库是 V1 建的：流水线写审计列前须自动跑 V2 迁移（幂等），否则 OperationalError。
 

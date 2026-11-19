@@ -88,7 +88,8 @@ def verify_answer(
 ) -> VerifiedAnswer:
     """逐句校验草稿答案，返回保留与剔除的裁定。
 
-    `source_texts`（可选）：claim_id → 解析原文全文，用于第二层「引文逐字定位」；
+    `source_texts`（可选）：**claim_id** → 解析原文全文（不是引用序号 [n]——真实语料 claim_id 可达三位数，
+    用引用号查会全查不到，smoke 实测过），用于第二层「引文逐字定位」；
     `None` 表示引文来自条目表本身、以其自证；显式传空 dict 表示「无原文可核」，按未通过处理（4.12）。
     `aliases` / `alias_path`：第三层主体一致用的别名表（形如 `{"省立一师": ["省立第一师范学校"]}`）。
     """
@@ -121,7 +122,8 @@ def verify_answer(
         for r in refs:
             e = by_index[r]
             if source_texts is not None:
-                original = source_texts.get(r)
+                # 键是 claim_id（pipeline 按 claim_id 现算并装入），不是引用序号 r（smoke 实测错位）。
+                original = source_texts.get(e.claim_id)
                 if not original or not contains_fact(original, e.quote):
                     failure, reason = Verdict.QUOTE_NOT_FOUND, f"[{r}] 引文未能在解析原文中逐字定位"
                     break

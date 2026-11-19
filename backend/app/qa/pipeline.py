@@ -41,10 +41,14 @@ def _load_source_texts(evidence: list[Evidence], data_dir: Path) -> dict[int, st
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             continue
-        blocks = payload.get("blocks") if isinstance(payload, dict) else None
-        if not blocks:
-            continue
-        text = "\n".join(str(b.get("text", "")) for b in blocks if isinstance(b, dict))
+        # 优先 full_text：真实 parsed 产物里它才是完整原文（smoke 实测：引文在其中命中，
+        # 但 blocks[].text 按块切分会在边界切断引文，导致第二层逐字定位误判、真模型答案全被剔除）。
+        full = payload.get("full_text") if isinstance(payload, dict) else None
+        text = str(full).strip() if isinstance(full, str) and full.strip() else ""
+        if not text:
+            blocks = payload.get("blocks") if isinstance(payload, dict) else None
+            if blocks:
+                text = "\n".join(str(b.get("text", "")) for b in blocks if isinstance(b, dict))
         if text:
             texts[e.claim_id] = text
     return texts or None
