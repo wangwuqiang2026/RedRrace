@@ -4,11 +4,13 @@ import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { MotionPathPlugin } from 'gsap/MotionPathPlugin'
 
-gsap.registerPlugin(ScrollTrigger, MotionPathPlugin)
-
 // vitest/jsdom 没有真实布局，ScrollTrigger 会挂；测试环境统一 no-op。
 // 服务端渲染（无 window）时同样禁用。
 const DISABLED = import.meta.env.MODE === 'test' || typeof window === 'undefined'
+
+if (!DISABLED) {
+  gsap.registerPlugin(ScrollTrigger, MotionPathPlugin)
+}
 
 export function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === 'function'
