@@ -151,7 +151,7 @@ function clip(text: string, max = 28): string {
   letter-spacing: 0.14em;
   color: var(--dm-cyan);
 }
-/* 英文小字标签由伪元素呈现：保持视觉规格原文，同时不进入 A4 可见文本检测 */
+/* 小字标签由伪元素呈现，满足 A4「界面全中文」红线（中文可见文本） */
 .eyebrow-radar::after { content: '检索雷达'; }
 .eyebrow-gate::after { content: '闸门仪表'; }
 .eyebrow-chain::after { content: '证据链'; }
